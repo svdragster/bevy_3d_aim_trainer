@@ -15,6 +15,13 @@ const SPAWN_POINT: Vec3 = Vec3::new(0.0, 1.625, 0.0);
 #[reflect(Component, Default)]
 pub struct Target;
 
+#[derive(Component)]
+struct PointsDisplay;
+
+#[derive(Default, Resource)]
+struct Points {
+    pub value: i32,
+}
 
 fn main() {
     App::new()
@@ -23,12 +30,13 @@ fn main() {
             brightness: 6000.0,
         })
         .insert_resource(ClearColor(Color::srgb(0.83, 0.96, 0.96)))
+        .insert_resource(Points::default()) // Add this line
         .add_plugins(DefaultPlugins)
         .add_plugins(RapierPhysicsPlugin::<NoUserData>::default())
         // .add_plugins(RapierDebugRenderPlugin::default())
         .add_plugins(FpsControllerPlugin)
         .add_systems(Startup, setup)
-        .add_systems(Update, (respawn, manage_cursor, click_targets))
+        .add_systems(Update, (respawn, manage_cursor, click_targets, update_points_display)) // Add update_points_display system
         .run();
 }
 
@@ -138,6 +146,19 @@ fn setup(
         ),
     ));
 
+    commands.spawn((
+        // Here we are able to call the `From` method instead of creating a new `TextSection`.
+        // This will use the default font (a minimal subset of FiraMono) and apply the default styling.
+        Text::new("From an &str into a Text with the default font!"),
+        Node {
+            position_type: PositionType::Absolute,
+            bottom: Val::Px(5.0),
+            left: Val::Px(15.0),
+            ..default()
+        },PointsDisplay
+    ));
+
+
 }
 
 fn respawn(mut query: Query<(&mut Transform, &mut Velocity)>) {
@@ -186,6 +207,7 @@ fn click_targets(
     camera: Query<&Transform, With<RenderPlayer>>,
     buttons: Res<ButtonInput<MouseButton>>,
     targets: Query<Entity, With<Target>>,
+    mut points: ResMut<Points>, // Add this line
 ) {
     if buttons.just_pressed(MouseButton::Left) {
         let rapier_context = rapier_context.single();
@@ -207,8 +229,16 @@ fn click_targets(
                 commands.entity(entity).despawn_recursive();
                 // Spawn a new target
                 spawn_random_target(&mut commands, &mut meshes, &mut materials);
+                // Increment points
+                points.value += 1;
+            } else {
+                points.value -= 1;
             }
         }
+        else {
+            points.value -= 1;
+        }
+        
     }
 }
 
@@ -221,18 +251,29 @@ fn spawn_random_target(
     let x = rng.gen_range(-4.0..4.0);
     let y = rng.gen_range(2.0..5.0);
     let z = rng.gen_range(1.0..2.0);
+    let size = rng.gen_range(0.3..0.8); // Random size between 0.3 and 0.8
+    let color = Color::rgb(rng.gen(), rng.gen(), rng.gen()); // Random color
 
     let target_material = materials.add(StandardMaterial {
-        base_color: Color::srgb(1.0, 0.4, 0.4),
+        base_color: color,
         ..Default::default()
     });
 
     commands.spawn((
-        Collider::ball(0.5),
+        Collider::ball(size),
         RigidBody::Fixed,
         Transform::from_translation(Vec3::new(x, y, z)),
         Target,
-        Mesh3d(meshes.add(Sphere::new(0.5))),
+        Mesh3d(meshes.add(Sphere::new(size))),
         MeshMaterial3d(target_material),
     ));
+}
+
+fn update_points_display(
+    points: Res<Points>,
+    mut query: Query<&mut Text, With<PointsDisplay>>,
+) {
+    for mut text in &mut query {
+        text.0 = format!("Points: {}", points.value);
+    }
 }
