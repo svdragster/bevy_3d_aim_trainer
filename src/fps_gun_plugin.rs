@@ -231,7 +231,8 @@ fn move_listener(
     last_position.last_position = current_position;
     let mut animation = GunAnimations::Idle;
     if let Ok(mut gun_animation_state) = gun_animation_state.get_single_mut() {
-        if delta.length_squared() > 0.01 * 0.01 {
+        println!("{}", delta.length());
+        if delta.length_squared() > 0.02 * 0.02 {
             gun_animation_state.walking = true;
         } else {
             gun_animation_state.walking = false;

@@ -9,9 +9,10 @@ use bevy::window::CursorGrabMode;
 use bevy_fps_controller::controller::*;
 use bevy_rapier3d::prelude::*;
 use bevy_rapier3d::prelude::*;
+use rand::distr::Uniform;
 use rand::prelude::*;
 use std::f32::consts::TAU;
-use rand::distr::Uniform;
+use bevy::audio::{SpatialScale, Volume};
 
 const SPAWN_POINT: Vec3 = Vec3::new(0.0, 1.625, 0.0);
 
@@ -33,7 +34,7 @@ struct Points {
 #[derive(Component)]
 struct ShootTracker {
     stopwatch: Stopwatch,
-    spray: usize,
+    spray_count: usize,
 }
 
 #[derive(Component)]
@@ -60,13 +61,20 @@ fn main() {
         )
         .add_systems(
             Update,
-            (respawn, manage_cursor, click_targets, update_points_display, despawn_bullet_impacts),
+            (
+                respawn,
+                manage_cursor,
+                click_targets,
+                update_points_display,
+                despawn_bullet_impacts,
+            ),
         ) // Add update_points_display system
         .run();
 }
 
 fn fps_controller_setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     let height = 3.0;
+    let listener = SpatialListener::new(0.5);
     let logical_entity = commands
         .spawn((
             Collider::cylinder(height / 2.0, 0.5),
@@ -110,8 +118,9 @@ fn fps_controller_setup(mut commands: Commands, asset_server: Res<AssetServer>) 
         })
         .insert(ShootTracker {
             stopwatch: Stopwatch::new(),
-            spray: 0,
+            spray_count: 0,
         })
+        .insert(listener)
         .id();
 
     commands.spawn((
@@ -266,6 +275,7 @@ fn click_targets(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    asset_server: Res<AssetServer>,
     rapier_context: ReadDefaultRapierContext,
     player_query: Query<Entity, With<LogicalPlayer>>,
     camera: Query<&Transform, With<RenderPlayer>>,
@@ -295,19 +305,40 @@ fn click_targets(
             let rapier_context = rapier_context.single();
             let camera_transform = camera.single();
             let ray_pos = camera_transform.translation;
-            let spray: Vec3;
-            if shoot_tracker.spray >= SPRAY_DIRECTIONS.len() {
+            let mut spray: Vec3;
+
+            // Spray while holding left mouse button
+            if shoot_tracker.spray_count >= SPRAY_DIRECTIONS.len() {
                 let mut rng = rand::rng();
                 let range = Uniform::new(-0.1f32, 0.1).unwrap();
-                spray = Vec3::new(
-                    rng.sample(range),
-                    rng.sample(range),
-                    0.0,
-                );
+                spray = Vec3::new(rng.sample(range), rng.sample(range), 0.0);
             } else {
-                spray = SPRAY_DIRECTIONS[shoot_tracker.spray];
+                spray = SPRAY_DIRECTIONS[shoot_tracker.spray_count];
             }
-            shoot_tracker.spray += 1;
+
+            // Spray while walking
+            if let Ok(gun_animation_state) = gun_animation_state.get_single() {
+                if gun_animation_state.walking {
+                    let mut rng = rand::rng();
+                    let range = Uniform::new(-0.1f32, 0.1).unwrap();
+                    spray += Vec3::new(rng.sample(range), rng.sample(range), 0.0);
+                }
+            }
+
+            // Increment the spray count
+            shoot_tracker.spray_count += 1;
+
+            let mut rng = rand::rng();
+            let pitch_range = Uniform::new(-0.12f32, 0.12).unwrap();
+
+            commands.spawn((
+                Transform::from_translation(ray_pos),
+                AudioPlayer::new(
+                    asset_server.load("sounds/weapons-rifle-assault-rifle-fire-01.ogg"),
+                ),
+                PlaybackSettings::ONCE.with_spatial(true).with_speed(1.1 + rng.sample(pitch_range)).with_volume(Volume::new(0.3)),
+            ));
+
             let ray_dir = camera_transform.forward().as_vec3() + camera_transform.rotation * spray;
             let max_toi: bevy_rapier3d::math::Real = 100.0;
             let solid = true;
@@ -330,8 +361,15 @@ fn click_targets(
                         base_color: Color::srgb(1.0, 0.0, 0.0),
                         ..Default::default()
                     })),
-                  ));
+                ));
 
+                commands.spawn((
+                    Transform::from_translation(hit_point),
+                    AudioPlayer::new(
+                        asset_server.load("sounds/weapons-shield-metal-impact-ring-02.ogg"),
+                    ),
+                    PlaybackSettings::ONCE.with_spatial(true).with_spatial_scale(SpatialScale::new(0.2)).with_volume(Volume::new(0.35)).with_speed(1.0 + rng.sample(pitch_range)),
+                ));
 
                 // Handle the hit.
                 if let Ok(target_entity) = targets.get(entity) {
@@ -350,7 +388,7 @@ fn click_targets(
             }
         }
     } else {
-        shoot_tracker.spray = 0;
+        shoot_tracker.spray_count = 0;
     }
 }
 
