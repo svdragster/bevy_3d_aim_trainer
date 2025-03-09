@@ -289,7 +289,8 @@ fn click_targets(
     let player_handle = player_query.single();
     let mut shoot_tracker = shoot_stopwatch
         .get_mut(player_handle)
-        .expect("LogicalPlayer also needs a ShootStopwatch");
+        .expect("LogicalPlayer also needs a ShootTracker");
+
     shoot_tracker.stopwatch.tick(time.delta());
 
     if let Ok(mut gun_animation_state) = gun_animation_state.get_single_mut() {
@@ -301,7 +302,6 @@ fn click_targets(
     }
     if buttons.pressed(MouseButton::Left) {
         if shoot_tracker.stopwatch.elapsed_secs() > 0.1 {
-            shoot_tracker.stopwatch.reset();
             let rapier_context = rapier_context.single();
             let camera_transform = camera.single();
             let ray_pos = camera_transform.translation;
@@ -310,7 +310,7 @@ fn click_targets(
             // Spray while holding left mouse button
             if shoot_tracker.spray_count >= SPRAY_DIRECTIONS.len() {
                 let mut rng = rand::rng();
-                let range = Uniform::new(-0.1f32, 0.1).unwrap();
+                let range = Uniform::new(-0.065f32, 0.065).unwrap();
                 spray = Vec3::new(rng.sample(range), rng.sample(range), 0.0);
             } else {
                 spray = SPRAY_DIRECTIONS[shoot_tracker.spray_count];
@@ -386,6 +386,8 @@ fn click_targets(
             } else {
                 points.value -= 1;
             }
+
+            shoot_tracker.stopwatch.reset();
         }
     } else {
         shoot_tracker.spray_count = 0;
