@@ -5,8 +5,8 @@ edition = "2021"
 
 [dependencies]
 bevy = { version = "0.15.3" }
-bevy_fps_controller = "0.15.0"
-bevy_rapier3d = "0.28.0"
+bevy_fps_controller = { git = "https://github.com/svdragster/bevy_fps_controller.git", branch = "main" }
+bevy_rapier3d = "0.29.0"
 rand = "0.9.0"
 
 # Enable max optimizations for dependencies, but not for our code:

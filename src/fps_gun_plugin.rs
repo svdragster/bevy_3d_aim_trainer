@@ -1,4 +1,5 @@
 use crate::FpsControllerSetup;
+use bevy::animation::RepeatAnimation;
 use bevy::pbr::NotShadowCaster;
 use bevy::prelude::*;
 use bevy::render::camera::Exposure;
@@ -8,7 +9,6 @@ use bevy_fps_controller::controller::{CameraConfig, FpsController, LogicalPlayer
 use bevy_rapier3d::geometry::Collider;
 use std::f32::consts::{PI, TAU};
 use std::time::Duration;
-use bevy::animation::RepeatAnimation;
 
 pub struct FpsGunPlugin;
 
@@ -24,7 +24,9 @@ pub struct GunAnimationState {
     pub walking: bool,
     pub shooting: bool,
     pub reloading: bool,
-    pub previous_state: Option<Box<GunAnimationState>>,
+    pub previous_walking: bool,
+    pub previous_shooting: bool,
+    pub previous_reloading: bool,
 }
 /// Used by the view model camera and the player's arm.
 /// The light source belongs to both layers.
@@ -32,6 +34,9 @@ const VIEW_MODEL_RENDER_LAYER: usize = 1;
 
 #[derive(Component)]
 pub struct ViewModelRenderPlayer;
+
+#[derive(Component)]
+pub struct FpsGunMuzzle;
 
 #[derive(Component, Clone)]
 pub struct FpsGunAnimationsData {
@@ -163,13 +168,14 @@ fn spawn_gun(
             RenderLayers::from_layers(&[VIEW_MODEL_RENDER_LAYER]),
             animations,
         ))
-        .observe(on_gun_loaded);
+        .observe(on_gun_scene_loaded);
 }
 
-fn on_gun_loaded(
+fn on_gun_scene_loaded(
     trigger: Trigger<SceneInstanceReady>,
     mut commands: Commands,
     children_query: Query<&Children>,
+    name_query: Query<&Name>,
     animations: Query<&FpsGunAnimationsData>,
     mut players: Query<&mut AnimationPlayer>,
     children: Query<&Children>,
@@ -208,17 +214,36 @@ fn on_gun_loaded(
             walking: false,
             shooting: false,
             reloading: false,
-            previous_state: Some(
-                GunAnimationState {
-                    walking: false,
-                    shooting: false,
-                    reloading: false,
-                    previous_state: None,
-                }
-                .into(),
-            ),
+            previous_walking: false,
+            previous_shooting: false,
+            previous_reloading: false,
         },
     ));
+
+    if let Some(muzzle) = find_entity(&children_query, &name_query, entity_to_animate, "Muzzle") {
+        commands
+            .entity(muzzle)
+            .insert((
+                FpsGunMuzzle,
+                Visibility::Hidden
+            ));
+    }
+
+    if let Some(left_hand) = find_entity(&children_query, &name_query, entity_to_animate, "LeftHand") {
+        commands
+          .entity(left_hand)
+          .insert((
+              Visibility::Hidden
+          ));
+    }
+
+    if let Some(right_hand) = find_entity(&children_query, &name_query, entity_to_animate, "RightHand") {
+        commands
+          .entity(right_hand)
+          .insert((
+              Visibility::Hidden
+          ));
+    }
 }
 
 fn move_listener(
@@ -231,7 +256,6 @@ fn move_listener(
     last_position.last_position = current_position;
     let mut animation = GunAnimations::Idle;
     if let Ok(mut gun_animation_state) = gun_animation_state.get_single_mut() {
-        println!("{}", delta.length());
         if delta.length_squared() > 0.02 * 0.02 {
             gun_animation_state.walking = true;
         } else {
@@ -250,44 +274,61 @@ fn on_fps_gun_animation(
 ) {
     if let Ok((mut animation_player, mut transitions, mut state)) = animation_query.get_single_mut()
     {
-        let previous_state = state.previous_state.clone();
+        let previous_walking = state.previous_walking;
+        let previous_shooting = state.previous_shooting;
+
         let mut animations = animations.get_single_mut().unwrap();
         let mut duration = 0;
-        if let Some(previous_state) = previous_state {
-            let mut new_animation: Option<GunAnimations> = None;
-            if state.shooting {
-                if !previous_state.shooting {
-                    new_animation = Some(GunAnimations::Shooting);
-                    duration = 100;
-                }
-            } else if state.walking {
-                if !previous_state.walking
-                    || animations.current_animation_index == GunAnimations::Shooting as usize
-                {
-                    new_animation = Some(GunAnimations::Walking);
-                    duration = 200;
-                }
-            } else if !state.walking && !state.shooting {
-                new_animation = Some(GunAnimations::Idle);
+        let mut new_animation: Option<GunAnimations> = None;
+        if state.shooting {
+            if !previous_shooting {
+                new_animation = Some(GunAnimations::Shooting);
+                duration = 100;
+            }
+        } else if state.walking {
+            if !previous_walking
+                || animations.current_animation_index == GunAnimations::Shooting as usize
+            {
+                new_animation = Some(GunAnimations::Walking);
                 duration = 200;
             }
-            if let Some(new_animation) = new_animation {
-                if animations.current_animation_index != new_animation as usize {
-                    // Idle animation
-                    transitions
-                        .play(
-                            &mut animation_player,
-                            animations.animations[new_animation as usize],
-                            Duration::from_millis(duration),
-                        )
-                        .repeat();
-                    for (index, active_animation) in animation_player.playing_animations_mut() {
-                        active_animation.set_speed(new_animation.get_speed());
-                    }
-                    animations.current_animation_index = new_animation as usize;
+        } else if !state.walking && !state.shooting {
+            new_animation = Some(GunAnimations::Idle);
+            duration = 200;
+        }
+        if let Some(new_animation) = new_animation {
+            if animations.current_animation_index != new_animation as usize {
+                // Idle animation
+                transitions
+                    .play(
+                        &mut animation_player,
+                        animations.animations[new_animation as usize],
+                        Duration::from_millis(duration),
+                    )
+                    .repeat();
+                for (index, active_animation) in animation_player.playing_animations_mut() {
+                    active_animation.set_speed(new_animation.get_speed());
                 }
+                animations.current_animation_index = new_animation as usize;
             }
         }
-        state.previous_state = Some(Box::new(state.clone()));
+        state.previous_walking = state.walking;
+        state.previous_shooting = state.shooting;
     }
+}
+
+fn find_entity(
+    children_query: &Query<&Children>,
+    name_query: &Query<&Name>,
+    parent: Entity,
+    name: &str,
+) -> Option<Entity> {
+    for child in children_query.iter_descendants(parent) {
+        if let Ok(child_name) = name_query.get(child) {
+            if child_name.to_string() == name {
+                return Some(child);
+            }
+        }
+    }
+    None
 }

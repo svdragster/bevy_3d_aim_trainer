@@ -52,7 +52,7 @@ fn main() {
         .insert_resource(Points::default()) // Add this line
         .add_plugins(DefaultPlugins)
         .add_plugins(RapierPhysicsPlugin::<NoUserData>::default())
-        // .add_plugins(RapierDebugRenderPlugin::default())
+        //.add_plugins(RapierDebugRenderPlugin::default())
         .add_plugins(FpsControllerPlugin)
         .add_plugins(FpsGunPlugin)
         .add_systems(
@@ -276,7 +276,7 @@ fn click_targets(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     asset_server: Res<AssetServer>,
-    rapier_context: ReadDefaultRapierContext,
+    rapier_context: ReadRapierContext,
     player_query: Query<Entity, With<LogicalPlayer>>,
     camera: Query<&Transform, With<RenderPlayer>>,
     buttons: Res<ButtonInput<MouseButton>>,
@@ -336,7 +336,7 @@ fn click_targets(
                 AudioPlayer::new(
                     asset_server.load("sounds/weapons-rifle-assault-rifle-fire-01.ogg"),
                 ),
-                PlaybackSettings::ONCE.with_spatial(true).with_speed(1.1 + rng.sample(pitch_range)).with_volume(Volume::new(0.3)),
+                PlaybackSettings::DESPAWN.with_spatial(true).with_speed(1.1 + rng.sample(pitch_range)).with_volume(Volume::new(0.3)),
             ));
 
             let ray_dir = camera_transform.forward().as_vec3() + camera_transform.rotation * spray;
@@ -368,7 +368,7 @@ fn click_targets(
                     AudioPlayer::new(
                         asset_server.load("sounds/weapons-shield-metal-impact-ring-02.ogg"),
                     ),
-                    PlaybackSettings::ONCE.with_spatial(true).with_spatial_scale(SpatialScale::new(0.2)).with_volume(Volume::new(0.35)).with_speed(1.0 + rng.sample(pitch_range)),
+                    PlaybackSettings::DESPAWN.with_spatial(true).with_spatial_scale(SpatialScale::new(0.2)).with_volume(Volume::new(0.35)).with_speed(1.0 + rng.sample(pitch_range)),
                 ));
 
                 // Handle the hit.
