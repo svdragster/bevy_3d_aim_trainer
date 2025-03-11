@@ -1,13 +1,10 @@
 use crate::FpsControllerSetup;
-use bevy::animation::RepeatAnimation;
 use bevy::pbr::NotShadowCaster;
 use bevy::prelude::*;
-use bevy::render::camera::Exposure;
 use bevy::render::view::RenderLayers;
 use bevy::scene::SceneInstanceReady;
-use bevy_fps_controller::controller::{CameraConfig, FpsController, LogicalPlayer, RenderPlayer};
-use bevy_rapier3d::geometry::Collider;
-use std::f32::consts::{PI, TAU};
+use bevy_fps_controller::controller::LogicalPlayer;
+use std::f32::consts::PI;
 use std::time::Duration;
 
 pub struct FpsGunPlugin;
@@ -232,17 +229,13 @@ fn on_gun_scene_loaded(
     if let Some(left_hand) = find_entity(&children_query, &name_query, entity_to_animate, "LeftHand") {
         commands
           .entity(left_hand)
-          .insert((
-              Visibility::Hidden
-          ));
+          .insert(Visibility::Hidden);
     }
 
     if let Some(right_hand) = find_entity(&children_query, &name_query, entity_to_animate, "RightHand") {
         commands
           .entity(right_hand)
-          .insert((
-              Visibility::Hidden
-          ));
+          .insert(Visibility::Hidden);
     }
 }
 
@@ -254,7 +247,7 @@ fn move_listener(
     let current_position = transform.translation;
     let delta = current_position - last_position.last_position;
     last_position.last_position = current_position;
-    let mut animation = GunAnimations::Idle;
+    let animation = GunAnimations::Idle;
     if let Ok(mut gun_animation_state) = gun_animation_state.get_single_mut() {
         if delta.length_squared() > 0.02 * 0.02 {
             gun_animation_state.walking = true;

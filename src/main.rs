@@ -3,11 +3,9 @@ mod fps_gun_plugin;
 use crate::fps_gun_plugin::FpsGunPlugin;
 use bevy::prelude::*;
 use bevy::render::camera::Exposure;
-use bevy::render::view::RenderLayers;
 use bevy::time::Stopwatch;
 use bevy::window::CursorGrabMode;
 use bevy_fps_controller::controller::*;
-use bevy_rapier3d::prelude::*;
 use bevy_rapier3d::prelude::*;
 use rand::distr::Uniform;
 use rand::prelude::*;
@@ -395,16 +393,25 @@ fn click_targets(
 }
 
 fn spawn_random_target(
-    mut commands: &mut Commands,
-    mut meshes: &mut ResMut<Assets<Mesh>>,
-    mut materials: &mut ResMut<Assets<StandardMaterial>>,
+    commands: &mut Commands,
+    meshes: &mut ResMut<Assets<Mesh>>,
+    materials: &mut ResMut<Assets<StandardMaterial>>,
 ) {
-    let rng = &mut rand::thread_rng();
-    let x = rng.gen_range(-4.0..4.0);
-    let y = rng.gen_range(2.0..5.0);
-    let z = rng.gen_range(1.0..2.0);
-    let size = rng.gen_range(0.3..0.8); // Random size between 0.3 and 0.8
-    let color = Color::rgb(rng.gen(), rng.gen(), rng.gen()); // Random color
+    let mut rng = rand::rng();
+    let range_x = Uniform::new(-4.0f32, 4.0).unwrap();
+    let range_y = Uniform::new(2.0f32, 5.0).unwrap();
+    let range_z = Uniform::new(1.0f32, 2.0).unwrap();
+    let range_size = Uniform::new(0.3f32, 0.8).unwrap();
+    let range_color = Uniform::new(0.1f32, 1.0).unwrap();
+    let x = rng.sample(range_x);
+    let y = rng.sample(range_y);
+    let z = rng.sample(range_z);
+    let size = rng.sample(range_size);
+    let color = Color::srgb(
+        rng.sample(range_color),
+        rng.sample(range_color),
+        rng.sample(range_color),
+    );
 
     let target_material = materials.add(StandardMaterial {
         base_color: color,
