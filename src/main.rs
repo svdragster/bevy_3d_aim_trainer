@@ -70,7 +70,7 @@ fn main() {
         .run();
 }
 
-fn fps_controller_setup(mut commands: Commands, asset_server: Res<AssetServer>) {
+fn fps_controller_setup(mut commands: Commands) {
     let height = 3.0;
     let listener = SpatialListener::new(0.5);
     let logical_entity = commands
@@ -139,7 +139,6 @@ fn fps_controller_setup(mut commands: Commands, asset_server: Res<AssetServer>) 
 fn setup(
     mut commands: Commands,
     mut window: Query<&mut Window>,
-    assets: Res<AssetServer>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut materials2d: ResMut<Assets<ColorMaterial>>,

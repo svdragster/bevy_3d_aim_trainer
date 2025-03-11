@@ -243,11 +243,10 @@ fn move_listener(
     mut player_query: Query<(Entity, &Transform, &mut LastPosition), With<LogicalPlayer>>,
     mut gun_animation_state: Query<&mut GunAnimationState>,
 ) {
-    let (player_entity, transform, mut last_position) = player_query.get_single_mut().unwrap();
+    let (_, transform, mut last_position) = player_query.get_single_mut().unwrap();
     let current_position = transform.translation;
     let delta = current_position - last_position.last_position;
     last_position.last_position = current_position;
-    let animation = GunAnimations::Idle;
     if let Ok(mut gun_animation_state) = gun_animation_state.get_single_mut() {
         if delta.length_squared() > 0.02 * 0.02 {
             gun_animation_state.walking = true;
@@ -299,7 +298,7 @@ fn on_fps_gun_animation(
                         Duration::from_millis(duration),
                     )
                     .repeat();
-                for (index, active_animation) in animation_player.playing_animations_mut() {
+                for (_, active_animation) in animation_player.playing_animations_mut() {
                     active_animation.set_speed(new_animation.get_speed());
                 }
                 animations.current_animation_index = new_animation as usize;
