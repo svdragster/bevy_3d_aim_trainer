@@ -1,4 +1,6 @@
 mod fps_gun_plugin;
+mod multiplayer;
+mod fps_controller;
 
 use crate::fps_gun_plugin::FpsGunPlugin;
 use bevy::prelude::*;
