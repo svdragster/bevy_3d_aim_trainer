@@ -3,9 +3,9 @@ use bevy::pbr::NotShadowCaster;
 use bevy::prelude::*;
 use bevy::render::view::RenderLayers;
 use bevy::scene::SceneInstanceReady;
-use bevy_fps_controller::controller::LogicalPlayer;
 use std::f32::consts::PI;
 use std::time::Duration;
+use crate::fps_controller::fps_controller::LogicalPlayer;
 
 pub struct FpsGunPlugin;
 

@@ -1,18 +1,19 @@
+mod fps_controller;
 mod fps_gun_plugin;
 mod multiplayer;
-mod fps_controller;
 
 use crate::fps_gun_plugin::FpsGunPlugin;
+use bevy::audio::{SpatialScale, Volume};
 use bevy::prelude::*;
 use bevy::render::camera::Exposure;
 use bevy::time::Stopwatch;
 use bevy::window::CursorGrabMode;
-use bevy_fps_controller::controller::*;
 use bevy_rapier3d::prelude::*;
+use clap::{Parser, Subcommand};
+use fps_controller::fps_controller::*;
 use rand::distr::Uniform;
 use rand::prelude::*;
 use std::f32::consts::TAU;
-use bevy::audio::{SpatialScale, Volume};
 
 const SPAWN_POINT: Vec3 = Vec3::new(0.0, 1.625, 0.0);
 
@@ -42,34 +43,64 @@ struct BulletImpact {
     stopwatch: Stopwatch,
 }
 
+#[derive(Parser, Debug)]
+#[command(version, about)]
+pub struct Cli {
+    #[command(subcommand)]
+    pub mode: Mode,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum Mode {
+    Client {
+        #[arg(short, long)]
+        port: u16,
+    },
+    Server,
+}
+
 fn main() {
-    App::new()
-        .insert_resource(AmbientLight {
-            color: Color::WHITE,
-            brightness: 6000.0,
-        })
-        .insert_resource(ClearColor(Color::srgb(0.83, 0.96, 0.96)))
-        .insert_resource(Points::default()) // Add this line
-        .add_plugins(DefaultPlugins)
-        .add_plugins(RapierPhysicsPlugin::<NoUserData>::default())
-        //.add_plugins(RapierDebugRenderPlugin::default())
-        .add_plugins(FpsControllerPlugin)
-        .add_plugins(FpsGunPlugin)
-        .add_systems(
-            Startup,
-            (setup, fps_controller_setup.in_set(FpsControllerSetup)),
-        )
-        .add_systems(
-            Update,
-            (
-                respawn,
-                manage_cursor,
-                click_targets,
-                update_points_display,
-                despawn_bullet_impacts,
-            ),
-        ) // Add update_points_display system
-        .run();
+    let cli = Cli::parse();
+    let mut app = App::new();
+    app.insert_resource(AmbientLight {
+        color: Color::WHITE,
+        brightness: 6000.0,
+    })
+    .insert_resource(ClearColor(Color::srgb(0.83, 0.96, 0.96)))
+    .insert_resource(Points::default()) // Add this line
+    .add_plugins(DefaultPlugins)
+    .add_plugins(RapierPhysicsPlugin::<NoUserData>::default())
+    //.add_plugins(RapierDebugRenderPlugin::default())
+    .add_plugins(FpsControllerPlugin)
+    .add_plugins(FpsGunPlugin)
+    .add_systems(
+        Startup,
+        (setup, fps_controller_setup.in_set(FpsControllerSetup)),
+    )
+    .add_systems(
+        Update,
+        (
+            respawn,
+            manage_cursor,
+            click_targets,
+            update_points_display,
+            despawn_bullet_impacts,
+        ),
+    );
+
+    // Multiplayer
+    match cli.mode {
+        Mode::Client { port } => {
+            app.add_plugins(multiplayer::client::FpsClientPlugin { port });
+        }
+        Mode::Server => {
+            app.add_plugins(multiplayer::server::FpsServerPlugin);
+        }
+    }
+    app.add_plugins(multiplayer::protocol::ProtocolPlugin);
+
+    // Run the app
+    app.run();
 }
 
 fn fps_controller_setup(mut commands: Commands) {
@@ -146,7 +177,16 @@ fn setup(
     mut materials2d: ResMut<Assets<ColorMaterial>>,
 ) {
     let mut window = window.single_mut();
-    window.title = String::from("Minimal FPS Controller Example");
+
+    let cli = Cli::parse();
+    match cli.mode {
+        Mode::Client { port: _port } => {
+            window.title = String::from("Multiplayer FPS Client");
+        }
+        Mode::Server => {
+            window.title = String::from("Multiplayer FPS Server");
+        }
+    }
 
     commands.spawn((
         DirectionalLight {
@@ -335,7 +375,10 @@ fn click_targets(
                 AudioPlayer::new(
                     asset_server.load("sounds/weapons-rifle-assault-rifle-fire-01.ogg"),
                 ),
-                PlaybackSettings::DESPAWN.with_spatial(true).with_speed(1.1 + rng.sample(pitch_range)).with_volume(Volume::new(0.3)),
+                PlaybackSettings::DESPAWN
+                    .with_spatial(true)
+                    .with_speed(1.1 + rng.sample(pitch_range))
+                    .with_volume(Volume::new(0.3)),
             ));
 
             let ray_dir = camera_transform.forward().as_vec3() + camera_transform.rotation * spray;
@@ -367,7 +410,11 @@ fn click_targets(
                     AudioPlayer::new(
                         asset_server.load("sounds/weapons-shield-metal-impact-ring-02.ogg"),
                     ),
-                    PlaybackSettings::DESPAWN.with_spatial(true).with_spatial_scale(SpatialScale::new(0.2)).with_volume(Volume::new(0.35)).with_speed(1.0 + rng.sample(pitch_range)),
+                    PlaybackSettings::DESPAWN
+                        .with_spatial(true)
+                        .with_spatial_scale(SpatialScale::new(0.2))
+                        .with_volume(Volume::new(0.35))
+                        .with_speed(1.0 + rng.sample(pitch_range)),
                 ));
 
                 // Handle the hit.

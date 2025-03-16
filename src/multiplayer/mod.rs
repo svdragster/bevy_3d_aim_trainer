@@ -1,8 +1,6 @@
 pub mod protocol;
 
-//#[cfg(feature = "client")]
-mod client;
+pub mod client;
 
-//#[cfg(feature = "server")]
-mod server;
+pub mod server;
 mod shared;

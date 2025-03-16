@@ -2,17 +2,17 @@ use bevy::prelude::*;
 use lightyear::prelude::client::ComponentSyncMode;
 use lightyear::prelude::*;
 
-/// A component that will identify which player the box belongs to
+/// A component that will identify which player the entity belongs to
 #[derive(Component, Serialize, Deserialize, Clone, Debug, PartialEq)]
-pub struct PlayerId(ClientId);
+pub struct PlayerId(pub ClientId);
 
-/// A component that will store the position of the box. We could also directly use the `Transform` component.
+/// A component that will store the transform of the player
 #[derive(Component, Serialize, Deserialize, Clone, Debug, PartialEq)]
-pub struct PlayerPosition(Vec3);
+pub struct PlayerTransform(pub Transform);
 
-/// A component that will store the color of the box, so that each player can have a different color.
+/// A component that will store the color of the entity, so that each player can have a different color.
 #[derive(Component, Deserialize, Serialize, Clone, Debug, PartialEq)]
-pub struct PlayerColor(pub(crate) Color);
+pub struct PlayerColor(pub Color);
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct ChatMessage(pub String);
@@ -35,9 +35,19 @@ impl Plugin for ProtocolPlugin {
             .add_prediction(ComponentSyncMode::Once)
             .add_interpolation(ComponentSyncMode::Once);
 
-        app.register_component::<PlayerPosition>(ChannelDirection::ServerToClient)
+        app.register_component::<PlayerTransform>(ChannelDirection::ServerToClient)
             .add_prediction(ComponentSyncMode::Full)
-            .add_interpolation(ComponentSyncMode::Full);
+            .add_interpolation(ComponentSyncMode::Full)
+            .add_interpolation_fn(|start, other, t: f32| {
+                let start: Transform = start.0;
+                let other: Transform = other.0;
+                let interpolated = Transform {
+                    translation: start.translation.lerp(other.translation, t),
+                    rotation: start.rotation.slerp(other.rotation, t),
+                    scale: start.scale.lerp(other.scale, t),
+                };
+                PlayerTransform(interpolated)
+            });
 
         app.register_component::<PlayerColor>(ChannelDirection::ServerToClient)
             .add_prediction(ComponentSyncMode::Once)
@@ -50,7 +60,6 @@ impl Plugin for ProtocolPlugin {
         });
 
         // Client
-
     }
 }
 

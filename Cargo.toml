@@ -5,8 +5,8 @@ edition = "2021"
 
 [dependencies]
 bevy = { version = "0.15.3" }
-bevy_fps_controller = { git = "https://github.com/svdragster/bevy_fps_controller.git", branch = "main" }
 bevy_rapier3d = "0.29.0"
+clap = { version = "4.5.32", features = ["derive"] }
 lightyear = "0.19.0"
 rand = "0.9.0"
 serde = "1.0.219"
