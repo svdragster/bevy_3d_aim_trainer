@@ -1,12 +1,21 @@
-use crate::multiplayer::shared::{draw_boxes, shared_config, shared_movement_behaviour, KEY, PROTOCOL_ID};
+use crate::fps_controller::fps_controller;
+use crate::fps_controller::fps_controller::{FpsController, FpsControllerInput};
+use crate::multiplayer::protocol::{Inputs, PlayerColor, PlayerId, ReplicatedTransform};
+use crate::multiplayer::shared::{
+    draw_boxes, shared_config, shared_movement_behaviour, KEY, PROTOCOL_ID,
+};
 use bevy::prelude::*;
+use bevy::render::camera::Exposure;
 use bevy::utils::HashMap;
+use bevy_rapier3d::dynamics::Velocity;
+use bevy_rapier3d::geometry::Collider;
+use bevy_rapier3d::plugin::ReadRapierContext;
 use lightyear::prelude::server::*;
 use lightyear::prelude::*;
+use rand::Rng;
+use std::f32::consts::TAU;
 use std::net::{Ipv4Addr, SocketAddr};
 use std::time::Duration;
-use rand::Rng;
-use crate::multiplayer::protocol::{Inputs, PlayerColor, PlayerId, PlayerTransform};
 
 pub struct FpsServerPlugin;
 
@@ -40,9 +49,9 @@ impl Plugin for FpsServerPlugin {
 
         let server_plugin = server::ServerPlugins::new(server_config);
         app.add_plugins(server_plugin);
-        app.add_systems(Startup, start_server);
+        app.add_systems(Startup, (start_server, setup_spectator));
         app.add_systems(Update, (handle_connections, draw_boxes));
-        app.add_systems(FixedUpdate, movement);
+        app.add_systems(FixedUpdate, (movement, update_physics));
         app.insert_resource(Global {
             client_id_to_entity_id: HashMap::default(),
         });
@@ -53,6 +62,22 @@ impl Plugin for FpsServerPlugin {
 
 fn start_server(mut commands: Commands) {
     commands.start_server();
+}
+
+fn setup_spectator(mut commands: Commands) {
+    commands.spawn((
+        Camera3d::default(),
+        Transform::from_xyz(5.0, 7.0, -15.0).looking_at(Vec3::ZERO, Vec3::Y),
+        Camera {
+            order: 0,
+            ..default()
+        },
+        Projection::Perspective(PerspectiveProjection {
+            fov: TAU / 5.0,
+            ..default()
+        }),
+        Exposure::SUNLIGHT,
+    ));
 }
 
 #[derive(Resource)]
@@ -88,36 +113,68 @@ pub(crate) fn handle_connections(
             .unwrap_or(&Color::WHITE)
             .clone();
 
+        let logical_entity = fps_controller::spawn_logical_entity(&mut commands);
+
         // We add the `Replicate` bundle to start replicating the entity to clients
         // By default, the entity will be replicated to all clients
-        let entity = commands.spawn((
-            PlayerId(client_id),
-            PlayerTransform(Transform::default()),
-            PlayerColor(color),
-            Replicate::default(),
-        ));
+        let replicated_entity = commands
+            .entity(logical_entity)
+            .insert((
+                PlayerId(client_id.clone()),
+                ReplicatedTransform(Transform::default()),
+                PlayerColor(color),
+                Replicate {
+                    sync: SyncTarget {
+                        prediction: NetworkTarget::Single(client_id.clone()),
+                        ..default()
+                    },
+                    ..default()
+                },
+            ))
+            .id();
 
         // Add a mapping from client id to entity id
-        global.client_id_to_entity_id.insert(client_id, entity.id());
+        global
+            .client_id_to_entity_id
+            .insert(client_id, replicated_entity);
     }
 }
 
 fn movement(
-    mut transform_query: Query<&mut PlayerTransform>,
     // Event that will contain the inputs for the correct tick
     mut input_reader: EventReader<InputEvent<Inputs>>,
     // Retrieve the entity associated with a given client
     global: Res<Global>,
+    mut query: Query<&mut FpsControllerInput>,
 ) {
     for input in input_reader.read() {
         let client_id = input.from();
-        println!("Received input from client: {:?}", client_id);
         if let Some(input) = input.input() {
             if let Some(player_entity) = global.client_id_to_entity_id.get(&client_id) {
-                if let Ok(transform) = transform_query.get_mut(*player_entity) {
-                    shared_movement_behaviour(transform, input);
-                }
+                shared_movement_behaviour(player_entity, input, &mut query);
             }
+        }
+    }
+}
+
+fn update_physics(
+    mut transform_query: Query<&mut ReplicatedTransform>,
+    time: Res<Time>,
+    physics_context: ReadRapierContext,
+    mut query: Query<(
+        Entity,
+        &mut FpsController,
+        &mut FpsControllerInput,
+        &mut Collider,
+        &mut Transform,
+        &mut Velocity,
+    )>,
+) {
+    fps_controller::fps_controller_move(&time, &physics_context, &mut query);
+    for (entity, controller, _, _, transform, _) in query.iter() {
+        if let Ok(mut replicated_transform) = transform_query.get_mut(entity) {
+            replicated_transform.0 = *transform;
+            replicated_transform.0.rotation = Quat::from_euler(EulerRot::YXZ, controller.yaw, controller.pitch, 0.0);
         }
     }
 }

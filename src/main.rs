@@ -72,19 +72,18 @@ fn main() {
     .add_plugins(RapierPhysicsPlugin::<NoUserData>::default())
     //.add_plugins(RapierDebugRenderPlugin::default())
     .add_plugins(FpsControllerPlugin)
-    .add_plugins(FpsGunPlugin)
+    //.add_plugins(FpsGunPlugin)
     .add_systems(
         Startup,
-        (setup, fps_controller_setup.in_set(FpsControllerSetup)),
+        (setup,),
     )
     .add_systems(
         Update,
         (
-            respawn,
             manage_cursor,
-            click_targets,
-            update_points_display,
-            despawn_bullet_impacts,
+            //click_targets,
+            //update_points_display,
+            //despawn_bullet_impacts,
         ),
     );
 
@@ -234,9 +233,9 @@ fn setup(
         Transform::from_translation(Vec3::new(0.0, 0.0, 10.0)),
     ));
 
-    spawn_random_target(&mut commands, &mut meshes, &mut materials);
-    spawn_random_target(&mut commands, &mut meshes, &mut materials);
-    spawn_random_target(&mut commands, &mut meshes, &mut materials);
+    //spawn_random_target(&mut commands, &mut meshes, &mut materials);
+    //spawn_random_target(&mut commands, &mut meshes, &mut materials);
+    //spawn_random_target(&mut commands, &mut meshes, &mut materials);
 
     // Crosshair
     let color = Color::srgb(0.5, 0.7, 1.0);

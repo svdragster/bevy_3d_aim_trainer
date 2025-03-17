@@ -1,5 +1,9 @@
 use std::f32::consts::*;
 
+use crate::multiplayer::protocol::{InputData, ReplicatedTransform};
+use crate::{fps_gun_plugin, ShootTracker, SPAWN_POINT};
+use bevy::render::camera::Exposure;
+use bevy::time::Stopwatch;
 use bevy::{input::mouse::MouseMotion, math::Vec3Swizzles, prelude::*};
 use bevy_rapier3d::prelude::*;
 
@@ -33,9 +37,9 @@ impl Plugin for FpsControllerPlugin {
         app.add_systems(
             PreUpdate,
             (
-                fps_controller_input,
-                fps_controller_look,
-                fps_controller_move,
+                //fps_controller_input, --> now handled by multiplayer client
+                //fps_controller_look, --> now handled by multiplayer server
+                //fps_controller_move, --> now handled by multiplayer server
                 fps_controller_render,
             )
                 .chain()
@@ -181,20 +185,116 @@ impl Default for FpsController {
 // ╚══════╝ ╚═════╝  ╚═════╝ ╚═╝ ╚═════╝
 
 // Used as padding by camera pitching (up/down) to avoid spooky math problems
-const ANGLE_EPSILON: f32 = 0.001953125;
+pub const ANGLE_EPSILON: f32 = 0.001953125;
 
 // If the distance to the ground is less than this value, the player is considered grounded
-const GROUNDED_DISTANCE: f32 = 0.125;
+pub const GROUNDED_DISTANCE: f32 = 0.125;
 
-const SLIGHT_SCALE_DOWN: f32 = 0.9375;
+pub const SLIGHT_SCALE_DOWN: f32 = 0.9375;
 
-pub fn fps_controller_input(
+pub fn spawn_logical_entity(commands: &mut Commands) -> Entity {
+    let listener = SpatialListener::new(0.5);
+    commands
+        .spawn(build_logical_entity_bundle())
+        .insert(CameraConfig {
+            height_offset: -0.5,
+        })
+        .insert(listener)
+        .id()
+}
+
+pub fn insert_logical_entity_bundle(commands: &mut Commands, entity: Entity) -> Entity {
+    let listener = SpatialListener::new(0.5);
+    commands
+        .entity(entity)
+        .insert(build_logical_entity_bundle())
+        .insert(CameraConfig {
+            height_offset: -0.5,
+        })
+        .insert(listener).id()
+}
+
+fn build_logical_entity_bundle() -> (
+    Collider,
+    Friction,
+    Restitution,
+    ActiveEvents,
+    Velocity,
+    RigidBody,
+    Sleeping,
+    LockedAxes,
+    AdditionalMassProperties,
+    GravityScale,
+    Ccd,
+    Transform,
+    LogicalPlayer,
+    FpsControllerInput,
+    FpsController,
+) {
+    let height = 3.0;
+    (
+        Collider::cylinder(height / 2.0, 0.5),
+        // A capsule can be used but is NOT recommended
+        // If you use it, you have to make sure each segment point is
+        // equidistant from the translation of the player transform
+        // Collider::capsule_y(height / 2.0, 0.5),
+        Friction {
+            coefficient: 0.0,
+            combine_rule: CoefficientCombineRule::Min,
+        },
+        Restitution {
+            coefficient: 0.0,
+            combine_rule: CoefficientCombineRule::Min,
+        },
+        ActiveEvents::COLLISION_EVENTS,
+        Velocity::zero(),
+        RigidBody::Dynamic,
+        Sleeping::disabled(),
+        LockedAxes::ROTATION_LOCKED,
+        AdditionalMassProperties::Mass(1.0),
+        GravityScale(0.0),
+        Ccd { enabled: true }, // Prevent clipping when going fast
+        Transform::from_translation(SPAWN_POINT),
+        LogicalPlayer,
+        FpsControllerInput {
+            pitch: -TAU / 12.0,
+            yaw: TAU * 5.0 / 8.0,
+            ..default()
+        },
+        FpsController {
+            air_acceleration: 80.0,
+            ..default()
+        },
+    )
+}
+
+pub fn create_render_entity_bundle(
+    logical_entity: Entity,
+) -> (Camera3d, Camera, Projection, Exposure, RenderPlayer) {
+    (
+        Camera3d::default(),
+        Camera {
+            order: 0,
+            ..default()
+        },
+        Projection::Perspective(PerspectiveProjection {
+            fov: TAU / 5.0,
+            ..default()
+        }),
+        Exposure::SUNLIGHT,
+        RenderPlayer { logical_entity },
+    )
+}
+
+/*pub fn fps_controller_input(
     key_input: Res<ButtonInput<KeyCode>>,
     mut mouse_events: EventReader<MouseMotion>,
     mut query: Query<(&FpsController, &mut FpsControllerInput)>,
 ) {
-    for (controller, mut input) in query.iter_mut()
-        .filter(|(controller, _)| controller.enable_input) {
+    for (controller, mut input) in query
+        .iter_mut()
+        .filter(|(controller, _)| controller.enable_input)
+    {
         let mut mouse_delta = Vec2::ZERO;
         for mouse_event in mouse_events.read() {
             mouse_delta += mouse_event.delta;
@@ -218,22 +318,16 @@ pub fn fps_controller_input(
         input.fly = key_input.just_pressed(controller.key_fly);
         input.crouch = key_input.pressed(controller.key_crouch);
     }
-}
-
-pub fn fps_controller_look(mut query: Query<(&mut FpsController, &FpsControllerInput)>) {
-    for (mut controller, input) in query.iter_mut() {
-        controller.pitch = input.pitch;
-        controller.yaw = input.yaw;
-    }
-}
+}*/
 
 pub fn fps_controller_move(
-    time: Res<Time>,
-    physics_context: ReadRapierContext,
-    mut query: Query<(
+    // FPS Controller
+    time: &Res<Time>,
+    physics_context: &ReadRapierContext,
+    mut query: &mut Query<(
         Entity,
-        &FpsControllerInput,
         &mut FpsController,
+        &mut FpsControllerInput,
         &mut Collider,
         &mut Transform,
         &mut Velocity,
@@ -241,9 +335,14 @@ pub fn fps_controller_move(
 ) {
     let dt = time.delta_secs();
 
-    for (entity, input, mut controller, mut collider, mut transform, mut velocity) in
+    for (entity, mut controller, mut input, mut collider, mut transform, mut velocity) in
         query.iter_mut()
     {
+        // Look direction
+        controller.pitch = input.pitch;
+        controller.yaw = input.yaw;
+
+        // Movement
         if input.fly {
             controller.move_mode = match controller.move_mode {
                 MoveMode::Noclip => MoveMode::Ground,
@@ -265,7 +364,8 @@ pub fn fps_controller_move(
                     } else {
                         controller.fly_speed
                     };
-                    let mut move_to_world = Mat3::from_euler(EulerRot::YXZ, input.yaw, input.pitch, 0.0);
+                    let mut move_to_world =
+                        Mat3::from_euler(EulerRot::YXZ, input.yaw, input.pitch, 0.0);
                     move_to_world.z_axis *= -1.0; // Forward is -Z
                     move_to_world.y_axis = Vec3::Y; // Vertical movement aligned with world up
                     velocity.linvel = move_to_world * input.movement * fly_speed;
@@ -306,7 +406,8 @@ pub fn fps_controller_move(
                 wish_speed = f32::min(wish_speed, max_speed);
 
                 if let Some((hit, hit_details)) = unwrap_hit_details(ground_cast) {
-                    let has_traction = Vec3::dot(hit_details.normal1, Vec3::Y) > controller.traction_normal_cutoff;
+                    let has_traction =
+                        Vec3::dot(hit_details.normal1, Vec3::Y) > controller.traction_normal_cutoff;
 
                     // Only apply friction after at least one tick, allows b-hopping without losing speed
                     if controller.ground_tick >= 1 && has_traction {
@@ -339,7 +440,8 @@ pub fn fps_controller_move(
 
                     if has_traction {
                         let linear_velocity = velocity.linvel;
-                        velocity.linvel -= Vec3::dot(linear_velocity, hit_details.normal1) * hit_details.normal1;
+                        velocity.linvel -=
+                            Vec3::dot(linear_velocity, hit_details.normal1) * hit_details.normal1;
 
                         if input.jump {
                             velocity.linvel.y = controller.jump_speed;
@@ -395,7 +497,10 @@ pub fn fps_controller_move(
 
                 // Step offset really only works best for cylinders
                 // For capsules the player has to practically teleported to fully step up
-                if collider.as_cylinder().is_some() && controller.step_offset > f32::EPSILON && controller.ground_tick >= 1 {
+                if collider.as_cylinder().is_some()
+                    && controller.step_offset > f32::EPSILON
+                    && controller.ground_tick >= 1
+                {
                     // Try putting the player forward, but instead lifted upward by the step offset
                     // If we can find a surface below us, we can adjust our position to be on top of it
                     let future_position = transform.translation + velocity.linvel * dt;
@@ -406,11 +511,14 @@ pub fn fps_controller_move(
                         transform.rotation,
                         -Vec3::Y,
                         &collider,
-                        ShapeCastOptions::with_max_time_of_impact(controller.step_offset * SLIGHT_SCALE_DOWN),
+                        ShapeCastOptions::with_max_time_of_impact(
+                            controller.step_offset * SLIGHT_SCALE_DOWN,
+                        ),
                         filter,
                     );
                     if let Some((hit, details)) = unwrap_hit_details(cast) {
-                        let has_traction_on_ledge = Vec3::dot(details.normal1, Vec3::Y) > controller.traction_normal_cutoff;
+                        let has_traction_on_ledge =
+                            Vec3::dot(details.normal1, Vec3::Y) > controller.traction_normal_cutoff;
                         if has_traction_on_ledge {
                             transform.translation.y += controller.step_offset - hit.time_of_impact;
                         }
@@ -442,7 +550,8 @@ pub fn fps_controller_move(
                         &rapier_context,
                         velocity.linvel,
                         dt,
-                    ).is_some()
+                    )
+                    .is_some()
                     {
                         velocity.linvel = Vec3::ZERO;
                     }
@@ -452,7 +561,9 @@ pub fn fps_controller_move(
     }
 }
 
-fn unwrap_hit_details(ground_cast: Option<(Entity, ShapeCastHit)>) -> Option<(ShapeCastHit, ShapeCastHitDetails)> {
+fn unwrap_hit_details(
+    ground_cast: Option<(Entity, ShapeCastHit)>,
+) -> Option<(ShapeCastHit, ShapeCastHitDetails)> {
     if let Some((_, hit)) = ground_cast {
         if let Some(details) = hit.details {
             return Some((hit, details));
@@ -461,17 +572,17 @@ fn unwrap_hit_details(ground_cast: Option<(Entity, ShapeCastHit)>) -> Option<(Sh
     None
 }
 
-
 /// Returns the offset that puts a point at the center of the player transform to the bottom of the collider.
 /// Needed for when we want to originate something at the foot of the player.
 fn collider_y_offset(collider: &Collider) -> Vec3 {
-    Vec3::Y * if let Some(cylinder) = collider.as_cylinder() {
-        cylinder.half_height()
-    } else if let Some(capsule) = collider.as_capsule() {
-        capsule.half_height() + capsule.radius()
-    } else {
-        panic!("Controller must use a cylinder or capsule collider")
-    }
+    Vec3::Y
+        * if let Some(cylinder) = collider.as_cylinder() {
+            cylinder.half_height()
+        } else if let Some(capsule) = collider.as_capsule() {
+            capsule.half_height() + capsule.radius()
+        } else {
+            panic!("Controller must use a cylinder or capsule collider")
+        }
 }
 
 /// Return a collider that is scaled laterally (XZ plane) but not vertically (Y axis).
@@ -480,7 +591,11 @@ fn scaled_collider_laterally(collider: &Collider, scale: f32) -> Collider {
         let new_cylinder = Collider::cylinder(cylinder.half_height(), cylinder.radius() * scale);
         new_cylinder
     } else if let Some(capsule) = collider.as_capsule() {
-        let new_capsule = Collider::capsule(capsule.segment().a(), capsule.segment().b(), capsule.radius() * scale);
+        let new_capsule = Collider::capsule(
+            capsule.segment().a(),
+            capsule.segment().b(),
+            capsule.radius() * scale,
+        );
         new_capsule
     } else {
         panic!("Controller must use a cylinder or capsule collider")
@@ -571,14 +686,21 @@ pub fn fps_controller_render(
         (With<LogicalPlayer>, Without<RenderPlayer>),
     >,
 ) {
+    println!(
+        "FPS Controller Render {} {}",
+        render_query.iter().count(),
+        logical_query.iter().count()
+    );
     for (mut render_transform, render_player) in render_query.iter_mut() {
         if let Ok((logical_transform, collider, controller, camera_config)) =
             logical_query.get(render_player.logical_entity)
         {
             let collider_offset = collider_y_offset(collider);
             let camera_offset = Vec3::Y * camera_config.height_offset;
-            render_transform.translation = logical_transform.translation + collider_offset + camera_offset;
-            render_transform.rotation = Quat::from_euler(EulerRot::YXZ, controller.yaw, controller.pitch, 0.0);
+            render_transform.translation =
+                logical_transform.translation + collider_offset + camera_offset;
+            render_transform.rotation =
+                Quat::from_euler(EulerRot::YXZ, controller.yaw, controller.pitch, 0.0);
         }
     }
 }

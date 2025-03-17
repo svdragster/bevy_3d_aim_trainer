@@ -8,7 +8,7 @@ pub struct PlayerId(pub ClientId);
 
 /// A component that will store the transform of the player
 #[derive(Component, Serialize, Deserialize, Clone, Debug, PartialEq)]
-pub struct PlayerTransform(pub Transform);
+pub struct ReplicatedTransform(pub Transform);
 
 /// A component that will store the color of the entity, so that each player can have a different color.
 #[derive(Component, Deserialize, Serialize, Clone, Debug, PartialEq)]
@@ -35,7 +35,7 @@ impl Plugin for ProtocolPlugin {
             .add_prediction(ComponentSyncMode::Once)
             .add_interpolation(ComponentSyncMode::Once);
 
-        app.register_component::<PlayerTransform>(ChannelDirection::ServerToClient)
+        app.register_component::<ReplicatedTransform>(ChannelDirection::ServerToClient)
             .add_prediction(ComponentSyncMode::Full)
             .add_interpolation(ComponentSyncMode::Full)
             .add_interpolation_fn(|start, other, t: f32| {
@@ -46,7 +46,7 @@ impl Plugin for ProtocolPlugin {
                     rotation: start.rotation.slerp(other.rotation, t),
                     scale: start.scale.lerp(other.scale, t),
                 };
-                PlayerTransform(interpolated)
+                ReplicatedTransform(interpolated)
             });
 
         app.register_component::<PlayerColor>(ChannelDirection::ServerToClient)
