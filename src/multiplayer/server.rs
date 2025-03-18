@@ -35,7 +35,8 @@ impl Plugin for FpsServerPlugin {
         let io_config = lightyear::connection::server::IoConfig::from_transport(
             server::ServerTransport::UdpSocket(server_addr),
         )
-        .with_conditioner(link_conditioner);
+        //.with_conditioner(link_conditioner)
+          ;
         let net_config = NetConfig::Netcode {
             config: netcode_config,
             io: io_config,
@@ -51,7 +52,10 @@ impl Plugin for FpsServerPlugin {
         app.add_plugins(server_plugin);
         app.add_systems(Startup, (start_server, setup_spectator));
         app.add_systems(Update, (handle_connections, draw_gizmos));
-        app.add_systems(FixedUpdate, (movement, update_physics, post_update_physics).chain());
+        app.add_systems(
+            FixedUpdate,
+            (movement, update_physics, post_update_physics).chain(),
+        );
         app.insert_resource(Global {
             client_id_to_entity_id: HashMap::default(),
         });
@@ -175,17 +179,14 @@ fn update_physics(
 
 fn post_update_physics(
     mut transform_query: Query<&mut ReplicatedTransform>,
-    query: Query<(
-        Entity,
-        &FpsController,
-        &Transform,
-    )>,
+    query: Query<(Entity, &FpsController, &Transform)>,
 ) {
     for (entity, controller, transform) in query.iter() {
         if let Ok(mut replicated_transform) = transform_query.get_mut(entity) {
             replicated_transform.0.translation = (*transform).translation.clone();
             replicated_transform.0.scale = (*transform).scale.clone();
-            replicated_transform.0.rotation = Quat::from_euler(EulerRot::YXZ, controller.yaw, controller.pitch, 0.0);
+            replicated_transform.0.rotation =
+                Quat::from_euler(EulerRot::YXZ, controller.yaw, controller.pitch, 0.0);
         }
     }
 }

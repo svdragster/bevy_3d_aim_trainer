@@ -34,7 +34,8 @@ impl Plugin for FpsClientPlugin {
         // Here we use the `UdpSocket` transport layer, with the link conditioner
         let client_addr = SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), self.port);
         let io_config = IoConfig::from_transport(client::ClientTransport::UdpSocket(client_addr))
-            .with_conditioner(link_conditioner);
+            //.with_conditioner(link_conditioner)
+          ;
 
         let mut rng = rand::rng();
         let client_id = rng.random_range(0..=u64::MAX);
