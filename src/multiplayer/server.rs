@@ -21,7 +21,7 @@ pub struct FpsServerPlugin;
 
 impl Plugin for FpsServerPlugin {
     fn build(&self, app: &mut App) {
-        let server_addr = SocketAddr::new(Ipv4Addr::LOCALHOST.into(), 25565);
+        let server_addr = SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), 25565);
         // You need to provide the private key and protocol id when building the `NetcodeConfig`
         let netcode_config = NetcodeConfig::default()
             .with_protocol_id(PROTOCOL_ID)
