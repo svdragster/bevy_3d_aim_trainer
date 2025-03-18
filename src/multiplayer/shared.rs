@@ -43,15 +43,13 @@ pub(crate) fn shared_movement_behaviour(
 
                 fps_controller_input.pitch += input_data.pitch;
                 fps_controller_input.yaw += input_data.yaw;
-
-                println!("pitch: {}, yaw: {}", input_data.pitch, input_data.yaw);
             }
         }
         _ => {}
     }
 }
 
-pub(crate) fn draw_boxes(mut gizmos: Gizmos, players: Query<(&ReplicatedTransform, &PlayerColor)>) {
+pub(crate) fn draw_gizmos(mut gizmos: Gizmos, players: Query<(&ReplicatedTransform, &PlayerColor)>) {
     for (position, color) in &players {
         gizmos.sphere(
             Isometry3d::new(
@@ -63,8 +61,9 @@ pub(crate) fn draw_boxes(mut gizmos: Gizmos, players: Query<(&ReplicatedTransfor
         );
         gizmos.arrow(
             position.0.translation + Vec3::new(0.0, 1.0, 0.0),
-            position.0.translation + Vec3::new(0.0, 1.0, 0.0) + position.0.rotation * Vec3::Z,
+            position.0.translation + Vec3::new(0.0, 1.0, 0.0) + position.0.forward().as_vec3(),
             color.0,
         );
     }
 }
+

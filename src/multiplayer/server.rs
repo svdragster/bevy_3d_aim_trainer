@@ -2,7 +2,7 @@ use crate::fps_controller::fps_controller;
 use crate::fps_controller::fps_controller::{FpsController, FpsControllerInput};
 use crate::multiplayer::protocol::{Inputs, PlayerColor, PlayerId, ReplicatedTransform};
 use crate::multiplayer::shared::{
-    draw_boxes, shared_config, shared_movement_behaviour, KEY, PROTOCOL_ID,
+    draw_gizmos, shared_config, shared_movement_behaviour, KEY, PROTOCOL_ID,
 };
 use bevy::prelude::*;
 use bevy::render::camera::Exposure;
@@ -50,8 +50,8 @@ impl Plugin for FpsServerPlugin {
         let server_plugin = server::ServerPlugins::new(server_config);
         app.add_plugins(server_plugin);
         app.add_systems(Startup, (start_server, setup_spectator));
-        app.add_systems(Update, (handle_connections, draw_boxes));
-        app.add_systems(FixedUpdate, (movement, update_physics));
+        app.add_systems(Update, (handle_connections, draw_gizmos));
+        app.add_systems(FixedUpdate, (movement, update_physics, post_update_physics).chain());
         app.insert_resource(Global {
             client_id_to_entity_id: HashMap::default(),
         });
@@ -171,9 +171,20 @@ fn update_physics(
     )>,
 ) {
     fps_controller::fps_controller_move(&time, &physics_context, &mut query);
-    for (entity, controller, _, _, transform, _) in query.iter() {
+}
+
+fn post_update_physics(
+    mut transform_query: Query<&mut ReplicatedTransform>,
+    query: Query<(
+        Entity,
+        &FpsController,
+        &Transform,
+    )>,
+) {
+    for (entity, controller, transform) in query.iter() {
         if let Ok(mut replicated_transform) = transform_query.get_mut(entity) {
-            replicated_transform.0 = *transform;
+            replicated_transform.0.translation = (*transform).translation.clone();
+            replicated_transform.0.scale = (*transform).scale.clone();
             replicated_transform.0.rotation = Quat::from_euler(EulerRot::YXZ, controller.yaw, controller.pitch, 0.0);
         }
     }

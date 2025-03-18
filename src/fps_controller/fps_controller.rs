@@ -686,11 +686,6 @@ pub fn fps_controller_render(
         (With<LogicalPlayer>, Without<RenderPlayer>),
     >,
 ) {
-    println!(
-        "FPS Controller Render {} {}",
-        render_query.iter().count(),
-        logical_query.iter().count()
-    );
     for (mut render_transform, render_player) in render_query.iter_mut() {
         if let Ok((logical_transform, collider, controller, camera_config)) =
             logical_query.get(render_player.logical_entity)
@@ -701,6 +696,7 @@ pub fn fps_controller_render(
                 logical_transform.translation + collider_offset + camera_offset;
             render_transform.rotation =
                 Quat::from_euler(EulerRot::YXZ, controller.yaw, controller.pitch, 0.0);
+            println!("Render transform: {:?}", render_transform.translation);
         }
     }
 }

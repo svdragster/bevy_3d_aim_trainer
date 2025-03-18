@@ -2,7 +2,7 @@ use std::f32::consts::{FRAC_PI_2, PI, TAU};
 use crate::multiplayer::protocol::{InputData, Inputs, PlayerId, ReplicatedTransform};
 use crate::multiplayer::server::Global;
 use crate::multiplayer::shared::{
-    draw_boxes, shared_config, shared_movement_behaviour, KEY, PROTOCOL_ID,
+    draw_gizmos, shared_config, shared_movement_behaviour, KEY, PROTOCOL_ID,
 };
 use bevy::prelude::*;
 use lightyear::client::input::native::InputSystemSet;
@@ -17,6 +17,7 @@ use bevy_rapier3d::geometry::Collider;
 use bevy_rapier3d::plugin::ReadRapierContext;
 use crate::fps_controller::fps_controller;
 use crate::fps_controller::fps_controller::{FpsController, FpsControllerInput};
+use crate::multiplayer::shared;
 
 pub struct FpsClientPlugin {
     pub port: u16,
@@ -68,8 +69,8 @@ impl Plugin for FpsClientPlugin {
             FixedPreUpdate,
             buffer_input.in_set(InputSystemSet::BufferInputs),
         );
-        app.add_systems(FixedUpdate, player_movement);
-        app.add_systems(Update, (draw_boxes, receive_entity_spawn));
+        app.add_systems(FixedUpdate, (player_movement, post_update_physics).chain());
+        app.add_systems(Update, (draw_gizmos, receive_entity_spawn));
         app.insert_resource(ClientData { client_id, client_entity: None });
     }
 }
@@ -188,6 +189,24 @@ fn player_movement(
                     &mut query,
                 );
             }
+        }
+    }
+}
+
+fn post_update_physics(
+    transform_query: Query<&ReplicatedTransform>,
+    mut query: Query<(
+        Entity,
+        &mut FpsController,
+        &mut Transform,
+    )>,
+) {
+    for (entity, mut controller, mut transform) in query.iter_mut() {
+        if let Ok(mut replicated_transform) = transform_query.get(entity) {
+            transform.translation = replicated_transform.0.translation;
+            controller.pitch = replicated_transform.0.rotation.to_euler(EulerRot::YXZ).1;
+            controller.yaw = replicated_transform.0.rotation.to_euler(EulerRot::YXZ).0;
+            transform.scale = replicated_transform.0.scale;
         }
     }
 }
