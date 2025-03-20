@@ -1,12 +1,13 @@
 use crate::fps_controller::fps_controller;
 use crate::fps_controller::fps_controller::{FpsController, FpsControllerInput};
-use crate::multiplayer::protocol::{Inputs, PlayerColor, ReplicatedTransform};
+use crate::multiplayer::protocol::{Inputs, PlayerColor, PlayerId, ReplicatedTransform};
 use bevy::prelude::*;
 use bevy_rapier3d::dynamics::Velocity;
 use bevy_rapier3d::geometry::Collider;
 use bevy_rapier3d::plugin::ReadRapierContext;
 use lightyear::prelude::*;
 use std::time::Duration;
+use crate::multiplayer::client::ClientData;
 
 pub const KEY: [u8; 32] = [
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -46,24 +47,6 @@ pub(crate) fn shared_movement_behaviour(
             }
         }
         _ => {}
-    }
-}
-
-pub(crate) fn draw_gizmos(mut gizmos: Gizmos, players: Query<(&ReplicatedTransform, &PlayerColor)>) {
-    for (position, color) in &players {
-        gizmos.sphere(
-            Isometry3d::new(
-                position.0.translation + Vec3::new(0.0, 1.0, 0.0),
-                Quat::default(),
-            ),
-            0.5,
-            color.0,
-        );
-        gizmos.arrow(
-            position.0.translation + Vec3::new(0.0, 1.0, 0.0),
-            position.0.translation + Vec3::new(0.0, 1.0, 0.0) + position.0.forward().as_vec3(),
-            color.0,
-        );
     }
 }
 

@@ -2,7 +2,7 @@ use crate::fps_controller::fps_controller;
 use crate::fps_controller::fps_controller::{FpsController, FpsControllerInput};
 use crate::multiplayer::protocol::{Inputs, PlayerColor, PlayerId, ReplicatedTransform};
 use crate::multiplayer::shared::{
-    draw_gizmos, shared_config, shared_movement_behaviour, KEY, PROTOCOL_ID,
+    shared_config, shared_movement_behaviour, KEY, PROTOCOL_ID,
 };
 use bevy::prelude::*;
 use bevy::render::camera::Exposure;
@@ -16,6 +16,7 @@ use rand::Rng;
 use std::f32::consts::TAU;
 use std::net::{Ipv4Addr, SocketAddr};
 use std::time::Duration;
+use crate::multiplayer::client::ClientData;
 
 pub struct FpsServerPlugin;
 
@@ -187,5 +188,26 @@ fn post_update_physics(
             replicated_transform.0.rotation =
                 Quat::from_euler(EulerRot::YXZ, controller.yaw, controller.pitch, 0.0);
         }
+    }
+}
+
+fn draw_gizmos(
+    mut gizmos: Gizmos,
+    players: Query<(&ReplicatedTransform, &PlayerColor, &PlayerId)>,
+) {
+    for (position, color, player_id) in &players {
+        gizmos.sphere(
+            Isometry3d::new(
+                position.0.translation + Vec3::new(0.0, 1.0, 0.0),
+                Quat::default(),
+            ),
+            0.5,
+            color.0,
+        );
+        gizmos.arrow(
+            position.0.translation + Vec3::new(0.0, 1.0, 0.0),
+            position.0.translation + Vec3::new(0.0, 1.0, 0.0) + position.0.forward().as_vec3(),
+            color.0,
+        );
     }
 }

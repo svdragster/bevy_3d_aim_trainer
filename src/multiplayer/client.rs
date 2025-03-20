@@ -1,8 +1,8 @@
 use std::f32::consts::{FRAC_PI_2, PI, TAU};
-use crate::multiplayer::protocol::{InputData, Inputs, PlayerId, ReplicatedTransform};
+use crate::multiplayer::protocol::{InputData, Inputs, PlayerColor, PlayerId, ReplicatedTransform};
 use crate::multiplayer::server::Global;
 use crate::multiplayer::shared::{
-    draw_gizmos, shared_config, shared_movement_behaviour, KEY, PROTOCOL_ID,
+    shared_config, shared_movement_behaviour, KEY, PROTOCOL_ID,
 };
 use bevy::prelude::*;
 use lightyear::client::input::native::InputSystemSet;
@@ -214,5 +214,30 @@ fn post_update_physics(
             //controller.yaw = replicated_transform.0.rotation.to_euler(EulerRot::YXZ).0;
             transform.scale = replicated_transform.0.scale;
         }
+    }
+}
+
+fn draw_gizmos(
+    mut gizmos: Gizmos,
+    players: Query<(&ReplicatedTransform, &PlayerColor, &PlayerId)>,
+    client_data: Res<ClientData>,
+) {
+    for (position, color, player_id) in &players {
+        if client_data.client_id == player_id.0.to_bits() {
+            continue;
+        }
+        gizmos.sphere(
+            Isometry3d::new(
+                position.0.translation + Vec3::new(0.0, 1.0, 0.0),
+                Quat::default(),
+            ),
+            0.5,
+            color.0,
+        );
+        gizmos.arrow(
+            position.0.translation + Vec3::new(0.0, 1.0, 0.0),
+            position.0.translation + Vec3::new(0.0, 1.0, 0.0) + position.0.forward().as_vec3(),
+            color.0,
+        );
     }
 }
