@@ -37,9 +37,10 @@ impl Plugin for FpsControllerPlugin {
         app.add_systems(
             PreUpdate,
             (
-                //fps_controller_input, --> now handled by multiplayer client
+                //fps_controller_mouse_input, --> now handled by multiplayer client
                 //fps_controller_look, --> now handled by multiplayer server
                 //fps_controller_move, --> now handled by multiplayer server
+                fps_controller_look,
                 fps_controller_render,
             )
                 .chain()
@@ -80,6 +81,12 @@ pub struct FpsControllerInput {
     pub pitch: f32,
     pub yaw: f32,
     pub movement: Vec3,
+}
+
+#[derive(Component, Default)]
+pub struct FpsControllerLook {
+    pub pitch: f32,
+    pub yaw: f32,
 }
 
 #[derive(Component)]
@@ -270,7 +277,7 @@ fn build_logical_entity_bundle() -> (
 
 pub fn create_render_entity_bundle(
     logical_entity: Entity,
-) -> (Camera3d, Camera, Projection, Exposure, RenderPlayer) {
+) -> (Camera3d, Camera, Projection, FpsControllerLook, Exposure, RenderPlayer) {
     (
         Camera3d::default(),
         Camera {
@@ -281,44 +288,43 @@ pub fn create_render_entity_bundle(
             fov: TAU / 5.0,
             ..default()
         }),
+        FpsControllerLook {
+            pitch: -TAU / 12.0,
+            yaw: TAU * 5.0 / 8.0,
+        },
         Exposure::SUNLIGHT,
         RenderPlayer { logical_entity },
     )
 }
 
-/*pub fn fps_controller_input(
-    key_input: Res<ButtonInput<KeyCode>>,
+pub fn fps_controller_look(
     mut mouse_events: EventReader<MouseMotion>,
-    mut query: Query<(&FpsController, &mut FpsControllerInput)>,
+    mut look_query: Query<&mut FpsControllerLook>,
+    mut query: Query<(&mut FpsControllerInput, &FpsController)>,
 ) {
-    for (controller, mut input) in query
-        .iter_mut()
-        .filter(|(controller, _)| controller.enable_input)
-    {
+    if look_query.is_empty() {
+        return;
+    }
+    let mut look = look_query.single_mut();
+    for (mut input, controller) in query.iter_mut() {
         let mut mouse_delta = Vec2::ZERO;
         for mouse_event in mouse_events.read() {
             mouse_delta += mouse_event.delta;
         }
         mouse_delta *= controller.sensitivity;
 
-        input.pitch = (input.pitch - mouse_delta.y)
-            .clamp(-FRAC_PI_2 + ANGLE_EPSILON, FRAC_PI_2 - ANGLE_EPSILON);
-        input.yaw -= mouse_delta.x;
-        if input.yaw.abs() > PI {
-            input.yaw = input.yaw.rem_euclid(TAU);
+        look.pitch = (look.pitch - mouse_delta.y)
+          .clamp(-FRAC_PI_2 + ANGLE_EPSILON, FRAC_PI_2 - ANGLE_EPSILON);
+        look.yaw -= mouse_delta.x;
+        if look.yaw.abs() > PI {
+            look.yaw = look.yaw.rem_euclid(TAU);
         }
 
-        input.movement = Vec3::new(
-            get_axis(&key_input, controller.key_right, controller.key_left),
-            get_axis(&key_input, controller.key_up, controller.key_down),
-            get_axis(&key_input, controller.key_forward, controller.key_back),
-        );
-        input.sprint = key_input.pressed(controller.key_sprint);
-        input.jump = key_input.pressed(controller.key_jump);
-        input.fly = key_input.just_pressed(controller.key_fly);
-        input.crouch = key_input.pressed(controller.key_crouch);
+        input.pitch = look.pitch;
+        input.yaw = look.yaw;
+
     }
-}*/
+}
 
 pub fn fps_controller_move(
     // FPS Controller
@@ -338,6 +344,8 @@ pub fn fps_controller_move(
     for (entity, mut controller, mut input, mut collider, mut transform, mut velocity) in
         query.iter_mut()
     {
+        println!("{:?} {:?}", entity, input.movement);
+
         // Look direction
         controller.pitch = input.pitch;
         controller.yaw = input.yaw;
@@ -680,13 +688,13 @@ fn get_axis(key_input: &Res<ButtonInput<KeyCode>>, key_pos: KeyCode, key_neg: Ke
 // ╚═╝  ╚═╝╚══════╝╚═╝  ╚═══╝╚═════╝ ╚══════╝╚═╝  ╚═╝
 
 pub fn fps_controller_render(
-    mut render_query: Query<(&mut Transform, &RenderPlayer), With<RenderPlayer>>,
+    mut render_query: Query<(&mut Transform, &FpsControllerLook, &RenderPlayer), With<RenderPlayer>>,
     logical_query: Query<
         (&Transform, &Collider, &FpsController, &CameraConfig),
         (With<LogicalPlayer>, Without<RenderPlayer>),
     >,
 ) {
-    for (mut render_transform, render_player) in render_query.iter_mut() {
+    for (mut render_transform, look, render_player) in render_query.iter_mut() {
         if let Ok((logical_transform, collider, controller, camera_config)) =
             logical_query.get(render_player.logical_entity)
         {
@@ -695,8 +703,7 @@ pub fn fps_controller_render(
             render_transform.translation =
                 logical_transform.translation + collider_offset + camera_offset;
             render_transform.rotation =
-                Quat::from_euler(EulerRot::YXZ, controller.yaw, controller.pitch, 0.0);
-            println!("Render transform: {:?}", render_transform.translation);
+                Quat::from_euler(EulerRot::YXZ, look.yaw, look.pitch, 0.0);
         }
     }
 }

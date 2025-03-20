@@ -162,7 +162,6 @@ fn movement(
 }
 
 fn update_physics(
-    mut transform_query: Query<&mut ReplicatedTransform>,
     time: Res<Time>,
     physics_context: ReadRapierContext,
     mut query: Query<(

@@ -10,6 +10,13 @@ pub struct PlayerId(pub ClientId);
 #[derive(Component, Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct ReplicatedTransform(pub Transform);
 
+/// A component that will store the transform of the player
+#[derive(Component, Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct ReplicatedLook {
+    pub yaw: f32,
+    pub pitch: f32,
+}
+
 /// A component that will store the color of the entity, so that each player can have a different color.
 #[derive(Component, Deserialize, Serialize, Clone, Debug, PartialEq)]
 pub struct PlayerColor(pub Color);
@@ -69,9 +76,9 @@ pub struct InputData {
     pub sprint: bool,
     pub jump: bool,
     pub crouch: bool,
+    pub movement: Vec3,
     pub pitch: f32,
     pub yaw: f32,
-    pub movement: Vec3,
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]

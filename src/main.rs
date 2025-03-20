@@ -14,6 +14,7 @@ use fps_controller::fps_controller::*;
 use rand::distr::Uniform;
 use rand::prelude::*;
 use std::f32::consts::TAU;
+use std::net::IpAddr;
 
 const SPAWN_POINT: Vec3 = Vec3::new(0.0, 1.625, 0.0);
 
@@ -53,8 +54,10 @@ pub struct Cli {
 #[derive(Subcommand, Debug)]
 pub enum Mode {
     Client {
-        #[arg(short, long)]
+        #[arg(long)]
         port: u16,
+        #[arg(long)]
+        ip: String,
     },
     Server,
 }
@@ -89,8 +92,13 @@ fn main() {
 
     // Multiplayer
     match cli.mode {
-        Mode::Client { port } => {
-            app.add_plugins(multiplayer::client::FpsClientPlugin { port });
+        Mode::Client { port, ip } => {
+            let server_ip = ip.parse::<IpAddr>();
+            if let Ok(server_ip) = server_ip {
+                app.add_plugins(multiplayer::client::FpsClientPlugin { server_port: port, server_ip});
+            } else {
+                panic!("Invalid IP address: {}", ip);
+            }
         }
         Mode::Server => {
             app.add_plugins(multiplayer::server::FpsServerPlugin);
@@ -179,7 +187,7 @@ fn setup(
 
     let cli = Cli::parse();
     match cli.mode {
-        Mode::Client { port: _port } => {
+        Mode::Client { port: _port, ip: _ip } => {
             window.title = String::from("Multiplayer FPS Client");
         }
         Mode::Server => {

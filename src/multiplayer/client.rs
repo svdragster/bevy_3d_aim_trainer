@@ -9,18 +9,19 @@ use lightyear::client::input::native::InputSystemSet;
 use lightyear::prelude::client::*;
 use lightyear::prelude::*;
 use rand::Rng;
-use std::net::{Ipv4Addr, SocketAddr};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::time::Duration;
 use bevy::input::mouse::MouseMotion;
 use bevy_rapier3d::dynamics::Velocity;
 use bevy_rapier3d::geometry::Collider;
 use bevy_rapier3d::plugin::ReadRapierContext;
 use crate::fps_controller::fps_controller;
-use crate::fps_controller::fps_controller::{FpsController, FpsControllerInput};
+use crate::fps_controller::fps_controller::{FpsController, FpsControllerInput, FpsControllerLook, ANGLE_EPSILON};
 use crate::multiplayer::shared;
 
 pub struct FpsClientPlugin {
-    pub port: u16,
+    pub server_port: u16,
+    pub server_ip: IpAddr,
 }
 
 impl Plugin for FpsClientPlugin {
@@ -32,7 +33,7 @@ impl Plugin for FpsClientPlugin {
             incoming_loss: 0.00,
         };
         // Here we use the `UdpSocket` transport layer, with the link conditioner
-        let client_addr = SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), self.port);
+        let client_addr = SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), 0);
         let io_config = IoConfig::from_transport(client::ClientTransport::UdpSocket(client_addr))
             //.with_conditioner(link_conditioner)
           ;
@@ -40,7 +41,7 @@ impl Plugin for FpsClientPlugin {
         let mut rng = rand::rng();
         let client_id = rng.random_range(0..=u64::MAX);
 
-        let server_addr = SocketAddr::new(Ipv4Addr::LOCALHOST.into(), 25565);
+        let server_addr = SocketAddr::new(self.server_ip, self.server_port);
         let auth = Authentication::Manual {
             // server's IP address
             server_addr,
@@ -70,7 +71,10 @@ impl Plugin for FpsClientPlugin {
             FixedPreUpdate,
             buffer_input.in_set(InputSystemSet::BufferInputs),
         );
-        app.add_systems(FixedUpdate, (player_movement, post_update_physics).chain());
+        app.add_systems(FixedUpdate, (
+            player_movement,
+            post_update_physics,
+        ).chain());
         app.add_systems(Update, (draw_gizmos, receive_entity_spawn));
         app.insert_resource(ClientData { client_id, client_entity: None });
     }
@@ -94,17 +98,22 @@ pub(crate) fn buffer_input(
     mut input_manager: ResMut<InputManager<Inputs>>,
     keypress: Res<ButtonInput<KeyCode>>,
     mut mouse_events: EventReader<MouseMotion>,
+    query_fps_controller_input: Query<&FpsControllerInput>,
 ) {
     let tick = tick_manager.tick();
+    if query_fps_controller_input.is_empty() {
+        return;
+    }
+    let fps_controller_input = query_fps_controller_input.single();
     let mut input = Inputs::None;
     let mut input_data = InputData {
         fly: false,
         sprint: false,
         jump: false,
         crouch: false,
-        pitch: 0.0,
-        yaw: 0.0,
         movement: Vec3::ZERO,
+        pitch: fps_controller_input.pitch,
+        yaw: fps_controller_input.yaw,
     };
     if keypress.pressed(KeyCode::KeyW) {
         input_data.movement.z += 1.0;
@@ -130,19 +139,17 @@ pub(crate) fn buffer_input(
     for mouse_event in mouse_events.read() {
         mouse_delta += mouse_event.delta;
     }
-
-    if input_data.movement.x != 0.0 || input_data.movement.z != 0.0 {
-        input_data.movement = input_data.movement.normalize();
-    }
-
-    let sensitivity = 0.001;
-    mouse_delta *= sensitivity;
+    mouse_delta *= 0.001;
 
     input_data.pitch = (input_data.pitch - mouse_delta.y)
-      .clamp(-FRAC_PI_2 + fps_controller::ANGLE_EPSILON, FRAC_PI_2 - fps_controller::ANGLE_EPSILON);
+      .clamp(-FRAC_PI_2 + ANGLE_EPSILON, FRAC_PI_2 - ANGLE_EPSILON);
     input_data.yaw -= mouse_delta.x;
     if input_data.yaw.abs() > PI {
         input_data.yaw = input_data.yaw.rem_euclid(TAU);
+    }
+
+    if input_data.movement.x != 0.0 || input_data.movement.z != 0.0 {
+        input_data.movement = input_data.movement.normalize();
     }
 
     input = Inputs::Input(input_data);
@@ -174,16 +181,14 @@ pub(crate) fn receive_entity_spawn(
 }
 
 fn player_movement(
-    mut transform_query: Query<(Entity, &mut ReplicatedTransform)>,
     // Event that will contain the inputs for the correct tick
     mut input_reader: EventReader<lightyear::prelude::client::InputEvent<Inputs>>,
     mut query: Query<&mut FpsControllerInput>,
+    client_data: Res<ClientData>,
 ) {
     for input in input_reader.read() {
         if let Some(input) = input.input() {
-            let result = transform_query.get_single_mut();
-            if result.is_ok() {
-                let (entity, mut replicated_transform) = result.unwrap();
+            if let Some(entity) = client_data.client_entity {
                 shared_movement_behaviour(
                     &entity,
                     &input,
@@ -205,8 +210,8 @@ fn post_update_physics(
     for (entity, mut controller, mut transform) in query.iter_mut() {
         if let Ok(mut replicated_transform) = transform_query.get(entity) {
             transform.translation = replicated_transform.0.translation;
-            controller.pitch = replicated_transform.0.rotation.to_euler(EulerRot::YXZ).1;
-            controller.yaw = replicated_transform.0.rotation.to_euler(EulerRot::YXZ).0;
+            //controller.pitch = replicated_transform.0.rotation.to_euler(EulerRot::YXZ).1;
+            //controller.yaw = replicated_transform.0.rotation.to_euler(EulerRot::YXZ).0;
             transform.scale = replicated_transform.0.scale;
         }
     }

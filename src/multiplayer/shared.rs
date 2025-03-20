@@ -41,8 +41,8 @@ pub(crate) fn shared_movement_behaviour(
                 fps_controller_input.crouch = input_data.crouch;
                 fps_controller_input.fly = input_data.fly;
 
-                fps_controller_input.pitch += input_data.pitch;
-                fps_controller_input.yaw += input_data.yaw;
+                fps_controller_input.yaw = input_data.yaw;
+                fps_controller_input.pitch = input_data.pitch;
             }
         }
         _ => {}
