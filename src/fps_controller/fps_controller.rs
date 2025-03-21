@@ -1,9 +1,7 @@
 use std::f32::consts::*;
 
-use crate::multiplayer::protocol::{InputData, ReplicatedTransform};
-use crate::{fps_gun_plugin, ShootTracker, SPAWN_POINT};
+use crate::SPAWN_POINT;
 use bevy::render::camera::Exposure;
-use bevy::time::Stopwatch;
 use bevy::{input::mouse::MouseMotion, math::Vec3Swizzles, prelude::*};
 use bevy_rapier3d::prelude::*;
 
@@ -218,7 +216,8 @@ pub fn insert_logical_entity_bundle(commands: &mut Commands, entity: Entity) -> 
         .insert(CameraConfig {
             height_offset: -0.5,
         })
-        .insert(listener).id()
+        .insert(listener)
+        .id()
 }
 
 fn build_logical_entity_bundle() -> (
@@ -277,7 +276,14 @@ fn build_logical_entity_bundle() -> (
 
 pub fn create_render_entity_bundle(
     logical_entity: Entity,
-) -> (Camera3d, Camera, Projection, FpsControllerLook, Exposure, RenderPlayer) {
+) -> (
+    Camera3d,
+    Camera,
+    Projection,
+    FpsControllerLook,
+    Exposure,
+    RenderPlayer,
+) {
     (
         Camera3d::default(),
         Camera {
@@ -314,7 +320,7 @@ pub fn fps_controller_look(
         mouse_delta *= controller.sensitivity;
 
         look.pitch = (look.pitch - mouse_delta.y)
-          .clamp(-FRAC_PI_2 + ANGLE_EPSILON, FRAC_PI_2 - ANGLE_EPSILON);
+            .clamp(-FRAC_PI_2 + ANGLE_EPSILON, FRAC_PI_2 - ANGLE_EPSILON);
         look.yaw -= mouse_delta.x;
         if look.yaw.abs() > PI {
             look.yaw = look.yaw.rem_euclid(TAU);
@@ -322,7 +328,6 @@ pub fn fps_controller_look(
 
         input.pitch = look.pitch;
         input.yaw = look.yaw;
-
     }
 }
 
@@ -330,7 +335,7 @@ pub fn fps_controller_move(
     // FPS Controller
     time: &Res<Time>,
     physics_context: &ReadRapierContext,
-    mut query: &mut Query<(
+    query: &mut Query<(
         Entity,
         &mut FpsController,
         &mut FpsControllerInput,
@@ -341,7 +346,7 @@ pub fn fps_controller_move(
 ) {
     let dt = time.delta_secs();
 
-    for (entity, mut controller, mut input, mut collider, mut transform, mut velocity) in
+    for (entity, mut controller, input, mut collider, mut transform, mut velocity) in
         query.iter_mut()
     {
         println!("{:?} {:?}", entity, input.movement);
@@ -668,18 +673,6 @@ fn acceleration(
     wish_direction * acceleration_speed
 }
 
-fn get_pressed(key_input: &Res<ButtonInput<KeyCode>>, key: KeyCode) -> f32 {
-    if key_input.pressed(key) {
-        1.0
-    } else {
-        0.0
-    }
-}
-
-fn get_axis(key_input: &Res<ButtonInput<KeyCode>>, key_pos: KeyCode, key_neg: KeyCode) -> f32 {
-    get_pressed(key_input, key_pos) - get_pressed(key_input, key_neg)
-}
-
 // ██████╗ ███████╗███╗   ██╗██████╗ ███████╗██████╗
 // ██╔══██╗██╔════╝████╗  ██║██╔══██╗██╔════╝██╔══██╗
 // ██████╔╝█████╗  ██╔██╗ ██║██║  ██║█████╗  ██████╔╝
@@ -688,7 +681,10 @@ fn get_axis(key_input: &Res<ButtonInput<KeyCode>>, key_pos: KeyCode, key_neg: Ke
 // ╚═╝  ╚═╝╚══════╝╚═╝  ╚═══╝╚═════╝ ╚══════╝╚═╝  ╚═╝
 
 pub fn fps_controller_render(
-    mut render_query: Query<(&mut Transform, &FpsControllerLook, &RenderPlayer), With<RenderPlayer>>,
+    mut render_query: Query<
+        (&mut Transform, &FpsControllerLook, &RenderPlayer),
+        With<RenderPlayer>,
+    >,
     logical_query: Query<
         (&Transform, &Collider, &FpsController, &CameraConfig),
         (With<LogicalPlayer>, Without<RenderPlayer>),
@@ -702,8 +698,7 @@ pub fn fps_controller_render(
             let camera_offset = Vec3::Y * camera_config.height_offset;
             render_transform.translation =
                 logical_transform.translation + collider_offset + camera_offset;
-            render_transform.rotation =
-                Quat::from_euler(EulerRot::YXZ, look.yaw, look.pitch, 0.0);
+            render_transform.rotation = Quat::from_euler(EulerRot::YXZ, look.yaw, look.pitch, 0.0);
         }
     }
 }

@@ -1,6 +1,5 @@
 use std::f32::consts::{FRAC_PI_2, PI, TAU};
 use crate::multiplayer::protocol::{InputData, Inputs, PlayerColor, PlayerId, ReplicatedTransform};
-use crate::multiplayer::server::Global;
 use crate::multiplayer::shared::{
     shared_config, shared_movement_behaviour, KEY, PROTOCOL_ID,
 };
@@ -12,12 +11,8 @@ use rand::Rng;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::time::Duration;
 use bevy::input::mouse::MouseMotion;
-use bevy_rapier3d::dynamics::Velocity;
-use bevy_rapier3d::geometry::Collider;
-use bevy_rapier3d::plugin::ReadRapierContext;
 use crate::fps_controller::fps_controller;
-use crate::fps_controller::fps_controller::{FpsController, FpsControllerInput, FpsControllerLook, ANGLE_EPSILON};
-use crate::multiplayer::shared;
+use crate::fps_controller::fps_controller::{FpsController, FpsControllerInput, ANGLE_EPSILON};
 
 pub struct FpsClientPlugin {
     pub server_port: u16,
@@ -207,8 +202,8 @@ fn post_update_physics(
         &mut Transform,
     )>,
 ) {
-    for (entity, mut controller, mut transform) in query.iter_mut() {
-        if let Ok(mut replicated_transform) = transform_query.get(entity) {
+    for (entity, controller, mut transform) in query.iter_mut() {
+        if let Ok(replicated_transform) = transform_query.get(entity) {
             transform.translation = replicated_transform.0.translation;
             //controller.pitch = replicated_transform.0.rotation.to_euler(EulerRot::YXZ).1;
             //controller.yaw = replicated_transform.0.rotation.to_euler(EulerRot::YXZ).0;

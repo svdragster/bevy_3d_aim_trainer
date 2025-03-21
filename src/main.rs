@@ -2,7 +2,6 @@ mod fps_controller;
 mod fps_gun_plugin;
 mod multiplayer;
 
-use crate::fps_gun_plugin::FpsGunPlugin;
 use bevy::audio::{SpatialScale, Volume};
 use bevy::prelude::*;
 use bevy::render::camera::Exposure;

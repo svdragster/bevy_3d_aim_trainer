@@ -16,7 +16,6 @@ use rand::Rng;
 use std::f32::consts::TAU;
 use std::net::{Ipv4Addr, SocketAddr};
 use std::time::Duration;
-use crate::multiplayer::client::ClientData;
 
 pub struct FpsServerPlugin;
 

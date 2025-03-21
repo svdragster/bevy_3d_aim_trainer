@@ -26,7 +26,7 @@ pub fn shared_config(mode: Mode) -> SharedConfig {
 pub(crate) fn shared_movement_behaviour(
     entity_to_update: &Entity,
     input: &Inputs,
-    mut query: &mut Query<&mut FpsControllerInput>,
+    query: &mut Query<&mut FpsControllerInput>,
 ) {
     match input {
         Inputs::Input(input_data) => {
