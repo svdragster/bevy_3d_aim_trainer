@@ -2,8 +2,13 @@ use std::f32::consts::*;
 
 use crate::SPAWN_POINT;
 use bevy::render::camera::Exposure;
+use bevy::time::Stopwatch;
 use bevy::{input::mouse::MouseMotion, math::Vec3Swizzles, prelude::*};
+use bevy::audio::SpatialScale;
 use bevy_rapier3d::prelude::*;
+use rand::distr::Uniform;
+use rand::Rng;
+use crate::multiplayer::protocol::{ReplicatedMoveData, SoundEvent};
 
 /// Manages the FPS controllers. Executes in `PreUpdate`, after bevy's internal
 /// input processing is finished.
@@ -48,6 +53,8 @@ impl Plugin for FpsControllerPlugin {
                 .after(gamepad::gamepad_connection_system)
                 .after(touch::touch_screen_input_system),
         );
+
+        app.add_event::<EntityShotEvent>();
     }
 }
 
@@ -76,6 +83,7 @@ pub struct FpsControllerInput {
     pub sprint: bool,
     pub jump: bool,
     pub crouch: bool,
+    pub shoot: bool,
     pub pitch: f32,
     pub yaw: f32,
     pub movement: Vec3,
@@ -91,6 +99,7 @@ pub struct FpsControllerLook {
 pub struct FpsController {
     pub move_mode: MoveMode,
     pub radius: f32,
+    pub eye_height_offset: f32,
     pub gravity: f32,
     pub walk_speed: f32,
     pub run_speed: f32,
@@ -132,6 +141,10 @@ pub struct FpsController {
     pub key_jump: KeyCode,
     pub key_fly: KeyCode,
     pub key_crouch: KeyCode,
+    // Shooting
+    pub shoot_stopwatch: Stopwatch,
+    pub spray_count: usize,
+    //
 }
 
 impl Default for FpsController {
@@ -139,6 +152,7 @@ impl Default for FpsController {
         Self {
             move_mode: MoveMode::Ground,
             radius: 0.5,
+            eye_height_offset: 1.5,
             fly_speed: 10.0,
             fast_fly_speed: 30.0,
             gravity: 23.0,
@@ -178,6 +192,8 @@ impl Default for FpsController {
             key_fly: KeyCode::KeyF,
             key_crouch: KeyCode::ControlLeft,
             sensitivity: 0.001,
+            shoot_stopwatch: Stopwatch::new(),
+            spray_count: 0,
         }
     }
 }
@@ -349,8 +365,6 @@ pub fn fps_controller_move(
     for (entity, mut controller, input, mut collider, mut transform, mut velocity) in
         query.iter_mut()
     {
-        println!("{:?} {:?}", entity, input.movement);
-
         // Look direction
         controller.pitch = input.pitch;
         controller.yaw = input.yaw;
@@ -574,6 +588,136 @@ pub fn fps_controller_move(
     }
 }
 
+#[derive(Event)]
+pub struct EntityShotEvent {
+    pub shooter: Entity,
+    pub entity: Entity,
+    pub hit_point: Vec3,
+}
+
+pub const SPRAY_DIRECTIONS: [Vec3; 12] = [
+    Vec3::new(0.0, 0.0, 0.0),
+    Vec3::new(-0.01, 0.025, 0.0),
+    Vec3::new(-0.02, 0.05, 0.0),
+    Vec3::new(-0.03, 0.055, 0.0),
+    Vec3::new(-0.032, 0.065, 0.0),
+    Vec3::new(-0.034, 0.075, 0.0),
+    Vec3::new(-0.038, 0.08, 0.0),
+    Vec3::new(-0.042, 0.082, 0.0),
+    Vec3::new(-0.046, 0.085, 0.0),
+    Vec3::new(-0.042, 0.087, 0.0),
+    Vec3::new(-0.039, 0.090, 0.0),
+    Vec3::new(-0.038, 0.093, 0.0),
+];
+
+pub const RANDOM_SPRAY_DIRECTIONS: [Vec3; 6] = [
+    Vec3::new(-0.12, 0.12, 0.0),
+    Vec3::new(0.05, -0.07, 0.0),
+    Vec3::new(0.12, -0.13, 0.0),
+    Vec3::new(-0.10, 0.11, 0.0),
+    Vec3::new(0.09, 0.08, 0.0),
+    Vec3::new(-0.04, -0.11, 0.0),
+];
+
+pub fn fps_controller_shoot(
+    time: &Res<Time>,
+    rapier_context: &ReadRapierContext,
+    query: &mut Query<(
+        Entity,
+        &mut FpsController,
+        &mut FpsControllerInput,
+        &mut Collider,
+        &mut Transform,
+        &mut Velocity,
+    )>,
+    query_move_data: &Query<&ReplicatedMoveData>,
+    entity_shot_event: &mut EventWriter<EntityShotEvent>,
+    sound_event: &mut EventWriter<SoundEvent>,
+) {
+    let delta = time.delta();
+    for (entity, mut controller, input, _, transform, _) in query.iter_mut() {
+        controller.shoot_stopwatch.tick(delta);
+        let replicated_move_data = query_move_data.get(entity);
+        if replicated_move_data.is_err() {
+            continue;
+        }
+        let replicated_move_data = replicated_move_data.unwrap();
+        if input.shoot {
+            if controller.shoot_stopwatch.elapsed_secs() > 0.1 {
+                let rapier_context = rapier_context.single();
+
+                let camera_offset = Vec3::Y * controller.eye_height_offset;
+                let mut eye_transform = transform.clone();
+                eye_transform.translation += camera_offset;
+                eye_transform.rotation =
+                    Quat::from_euler(EulerRot::YXZ, input.yaw, input.pitch, 0.0);
+                let ray_pos = eye_transform.translation;
+                let mut spray: Vec3;
+
+                // Spray while holding left mouse button
+                if controller.spray_count >= SPRAY_DIRECTIONS.len() {
+                    spray = RANDOM_SPRAY_DIRECTIONS[controller.spray_count % RANDOM_SPRAY_DIRECTIONS.len()];
+                } else {
+                    spray = SPRAY_DIRECTIONS[controller.spray_count];
+                }
+
+                // Spray while walking
+                if replicated_move_data.velocity.length_squared() > 0.01 * 0.01 {
+                    spray += RANDOM_SPRAY_DIRECTIONS[controller.spray_count % RANDOM_SPRAY_DIRECTIONS.len()];
+                }
+
+                // Increment the spray count
+                controller.spray_count += 1;
+
+                let mut rng = rand::rng();
+                let pitch_range = Uniform::new(-0.12f32, 0.12).unwrap();
+                sound_event.send(SoundEvent {
+                    emitter: Some(entity),
+                    asset: "sounds/weapons-rifle-assault-rifle-fire-01.ogg".to_string(),
+                    position: ray_pos.clone(),
+                    volume: 0.3,
+                    speed: 1.1 + rng.sample(pitch_range),
+                    spatial: false,
+                    spatial_scale: None,
+                });
+
+                let ray_dir = eye_transform.forward().as_vec3() + eye_transform.rotation * spray;
+                let max_toi: bevy_rapier3d::math::Real = 100.0;
+                let solid = true;
+                let filter = QueryFilter::new()
+                    .exclude_sensors()
+                    .exclude_rigid_body(entity);
+
+
+                if let Some((entity, toi)) =
+                    rapier_context.cast_ray(ray_pos, ray_dir, max_toi, solid, filter)
+                {
+                    let hit_point = ray_pos + ray_dir * Vec3::splat(toi.into());
+                    entity_shot_event.send(EntityShotEvent {
+                        shooter: entity,
+                        entity,
+                        hit_point,
+                    });
+
+                    sound_event.send(SoundEvent {
+                        emitter: Some(entity),
+                        asset: "sounds/weapons-shield-metal-impact-ring-02.ogg".to_string(),
+                        position: ray_pos.clone(),
+                        volume: 0.35,
+                        speed: 1.0 + rng.sample(pitch_range),
+                        spatial: false,
+                        spatial_scale: Some(0.2),
+                    });
+                }
+
+                controller.shoot_stopwatch.reset();
+            }
+        } else {
+            controller.spray_count = 0;
+        }
+    }
+}
+
 fn unwrap_hit_details(
     ground_cast: Option<(Entity, ShapeCastHit)>,
 ) -> Option<(ShapeCastHit, ShapeCastHitDetails)> {
@@ -694,10 +838,9 @@ pub fn fps_controller_render(
         if let Ok((logical_transform, collider, controller, camera_config)) =
             logical_query.get(render_player.logical_entity)
         {
-            let collider_offset = collider_y_offset(collider);
-            let camera_offset = Vec3::Y * camera_config.height_offset;
+            let camera_offset = Vec3::Y * controller.eye_height_offset;
             render_transform.translation =
-                logical_transform.translation + collider_offset + camera_offset;
+                logical_transform.translation + camera_offset;
             render_transform.rotation = Quat::from_euler(EulerRot::YXZ, look.yaw, look.pitch, 0.0);
         }
     }

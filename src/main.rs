@@ -1,6 +1,8 @@
 mod fps_controller;
 mod fps_gun_plugin;
 mod multiplayer;
+mod game_states;
+mod game_modes;
 
 use bevy::audio::{SpatialScale, Volume};
 use bevy::prelude::*;
@@ -14,6 +16,7 @@ use rand::distr::Uniform;
 use rand::prelude::*;
 use std::f32::consts::TAU;
 use std::net::IpAddr;
+use crate::fps_gun_plugin::FpsGunPlugin;
 
 const SPAWN_POINT: Vec3 = Vec3::new(0.0, 1.625, 0.0);
 
@@ -74,7 +77,7 @@ fn main() {
     .add_plugins(RapierPhysicsPlugin::<NoUserData>::default())
     //.add_plugins(RapierDebugRenderPlugin::default())
     .add_plugins(FpsControllerPlugin)
-    //.add_plugins(FpsGunPlugin)
+    .add_plugins(FpsGunPlugin)
     .add_systems(
         Startup,
         (setup,),
@@ -85,7 +88,7 @@ fn main() {
             manage_cursor,
             //click_targets,
             //update_points_display,
-            //despawn_bullet_impacts,
+            despawn_bullet_impacts,
         ),
     );
 
@@ -252,7 +255,7 @@ fn setup(
         Transform::from_xyz(0.0, 0.0, 0.0),
     ));
 
-    commands.spawn((
+    /*commands.spawn((
         // Here we are able to call the `From` method instead of creating a new `TextSection`.
         // This will use the default font (a minimal subset of FiraMono) and apply the default styling.
         Text::new("From an &str into a Text with the default font!"),
@@ -263,7 +266,7 @@ fn setup(
             ..default()
         },
         PointsDisplay,
-    ));
+    ));*/
 }
 
 fn respawn(mut query: Query<(&mut Transform, &mut Velocity)>) {
@@ -301,20 +304,7 @@ fn manage_cursor(
     }
 }
 
-const SPRAY_DIRECTIONS: [Vec3; 12] = [
-    Vec3::new(0.0, 0.0, 0.0),
-    Vec3::new(-0.01, 0.025, 0.0),
-    Vec3::new(-0.02, 0.05, 0.0),
-    Vec3::new(-0.03, 0.055, 0.0),
-    Vec3::new(-0.032, 0.065, 0.0),
-    Vec3::new(-0.034, 0.075, 0.0),
-    Vec3::new(-0.038, 0.08, 0.0),
-    Vec3::new(-0.042, 0.082, 0.0),
-    Vec3::new(-0.046, 0.085, 0.0),
-    Vec3::new(-0.042, 0.087, 0.0),
-    Vec3::new(-0.039, 0.090, 0.0),
-    Vec3::new(-0.038, 0.093, 0.0),
-];
+
 
 fn click_targets(
     mut commands: Commands,
@@ -331,9 +321,16 @@ fn click_targets(
     mut shoot_stopwatch: Query<&mut ShootTracker>,
     time: Res<Time>,
 ) {
+    if player_query.is_empty() {
+        return;
+    }
     let player_handle = player_query.single();
-    let mut shoot_tracker = shoot_stopwatch
-        .get_mut(player_handle)
+    let shoot_tracker = shoot_stopwatch
+      .get_mut(player_handle);
+    if shoot_tracker.is_err() {
+        return;
+    }
+    let mut shoot_tracker = shoot_tracker
         .expect("LogicalPlayer also needs a ShootTracker");
 
     shoot_tracker.stopwatch.tick(time.delta());

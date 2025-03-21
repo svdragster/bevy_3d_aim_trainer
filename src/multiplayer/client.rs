@@ -1,7 +1,7 @@
 use std::f32::consts::{FRAC_PI_2, PI, TAU};
-use crate::multiplayer::protocol::{InputData, Inputs, PlayerColor, PlayerId, ReplicatedTransform};
+use crate::multiplayer::protocol::{InputData, Inputs, PlayerColor, PlayerId, ReplicatedMoveData, ReplicatedSoundEffect, SoundEvent};
 use crate::multiplayer::shared::{
-    shared_config, shared_movement_behaviour, KEY, PROTOCOL_ID,
+    shared_config, shared_input_behaviour, KEY, PROTOCOL_ID,
 };
 use bevy::prelude::*;
 use lightyear::client::input::native::InputSystemSet;
@@ -9,10 +9,17 @@ use lightyear::prelude::client::*;
 use lightyear::prelude::*;
 use rand::Rng;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::ops::Add;
 use std::time::Duration;
+use bevy::audio::{SpatialScale, Volume};
 use bevy::input::mouse::MouseMotion;
+use bevy::time::Stopwatch;
+use bevy_rapier3d::dynamics::Velocity;
+use bevy_rapier3d::geometry::Collider;
+use bevy_rapier3d::plugin::ReadRapierContext;
+use crate::BulletImpact;
 use crate::fps_controller::fps_controller;
-use crate::fps_controller::fps_controller::{FpsController, FpsControllerInput, ANGLE_EPSILON};
+use crate::fps_controller::fps_controller::{EntityShotEvent, FpsController, FpsControllerInput, ANGLE_EPSILON};
 
 pub struct FpsClientPlugin {
     pub server_port: u16,
@@ -67,10 +74,14 @@ impl Plugin for FpsClientPlugin {
             buffer_input.in_set(InputSystemSet::BufferInputs),
         );
         app.add_systems(FixedUpdate, (
-            player_movement,
+            on_player_input,
+            update_physics,
             post_update_physics,
         ).chain());
         app.add_systems(Update, (draw_gizmos, receive_entity_spawn));
+        app.add_systems(Update, (on_entity_shot).run_if(on_event::<EntityShotEvent>));
+        app.add_systems(Update, (on_sound_event).run_if(on_event::<SoundEvent>));
+        app.add_systems(Update, (on_sound_from_server));
         app.insert_resource(ClientData { client_id, client_entity: None });
     }
 }
@@ -80,6 +91,9 @@ pub struct ClientData {
     pub client_id: u64,
     pub client_entity: Option<Entity>,
 }
+
+#[derive(Component)]
+struct LocalPlayer;
 
 fn init(mut commands: Commands) {
     commands.connect_client();
@@ -93,6 +107,7 @@ pub(crate) fn buffer_input(
     mut input_manager: ResMut<InputManager<Inputs>>,
     keypress: Res<ButtonInput<KeyCode>>,
     mut mouse_events: EventReader<MouseMotion>,
+    buttons: Res<ButtonInput<MouseButton>>,
     query_fps_controller_input: Query<&FpsControllerInput>,
 ) {
     let tick = tick_manager.tick();
@@ -106,6 +121,7 @@ pub(crate) fn buffer_input(
         sprint: false,
         jump: false,
         crouch: false,
+        shoot: false,
         movement: Vec3::ZERO,
         pitch: fps_controller_input.pitch,
         yaw: fps_controller_input.yaw,
@@ -147,6 +163,10 @@ pub(crate) fn buffer_input(
         input_data.movement = input_data.movement.normalize();
     }
 
+    if buttons.pressed(MouseButton::Left) {
+        input_data.shoot = true;
+    }
+
     input = Inputs::Input(input_data);
     input_manager.add_input(input, tick)
 }
@@ -165,6 +185,7 @@ pub(crate) fn receive_entity_spawn(
                 info!("This is my entity!");
                 let entity = fps_controller::insert_logical_entity_bundle(&mut commands, entity);
                 commands.spawn(fps_controller::create_render_entity_bundle(entity));
+                commands.entity(entity).insert(LocalPlayer);
                 client_data.client_entity = Some(entity);
             } else {
                 info!("This is not my entity!");
@@ -175,7 +196,7 @@ pub(crate) fn receive_entity_spawn(
     }
 }
 
-fn player_movement(
+fn on_player_input(
     // Event that will contain the inputs for the correct tick
     mut input_reader: EventReader<lightyear::prelude::client::InputEvent<Inputs>>,
     mut query: Query<&mut FpsControllerInput>,
@@ -184,7 +205,7 @@ fn player_movement(
     for input in input_reader.read() {
         if let Some(input) = input.input() {
             if let Some(entity) = client_data.client_entity {
-                shared_movement_behaviour(
+                shared_input_behaviour(
                     &entity,
                     &input,
                     &mut query,
@@ -195,7 +216,7 @@ fn player_movement(
 }
 
 fn post_update_physics(
-    transform_query: Query<&ReplicatedTransform>,
+    transform_query: Query<&ReplicatedMoveData>,
     mut query: Query<(
         Entity,
         &mut FpsController,
@@ -204,17 +225,15 @@ fn post_update_physics(
 ) {
     for (entity, controller, mut transform) in query.iter_mut() {
         if let Ok(replicated_transform) = transform_query.get(entity) {
-            transform.translation = replicated_transform.0.translation;
-            //controller.pitch = replicated_transform.0.rotation.to_euler(EulerRot::YXZ).1;
-            //controller.yaw = replicated_transform.0.rotation.to_euler(EulerRot::YXZ).0;
-            transform.scale = replicated_transform.0.scale;
+            transform.translation = replicated_transform.translation;
+            transform.scale = replicated_transform.scale;
         }
     }
 }
 
 fn draw_gizmos(
     mut gizmos: Gizmos,
-    players: Query<(&ReplicatedTransform, &PlayerColor, &PlayerId)>,
+    players: Query<(&ReplicatedMoveData, &PlayerColor, &PlayerId)>,
     client_data: Res<ClientData>,
 ) {
     for (position, color, player_id) in &players {
@@ -223,16 +242,115 @@ fn draw_gizmos(
         }
         gizmos.sphere(
             Isometry3d::new(
-                position.0.translation + Vec3::new(0.0, 1.0, 0.0),
+                position.translation + Vec3::new(0.0, 1.5, 0.0),
                 Quat::default(),
             ),
             0.5,
             color.0,
         );
+        let rotation = Quat::from_euler(EulerRot::YXZ, position.yaw, position.pitch, 0.0);
         gizmos.arrow(
-            position.0.translation + Vec3::new(0.0, 1.0, 0.0),
-            position.0.translation + Vec3::new(0.0, 1.0, 0.0) + position.0.forward().as_vec3(),
+            position.translation + Vec3::new(0.0, 1.5, 0.0),
+            position.translation + Vec3::new(0.0, 1.5, 0.0) + rotation * Vec3::NEG_Z,
             color.0,
         );
     }
+}
+
+fn update_physics(
+    time: Res<Time>,
+    physics_context: ReadRapierContext,
+    mut query: Query<(
+        Entity,
+        &mut FpsController,
+        &mut FpsControllerInput,
+        &mut Collider,
+        &mut Transform,
+        &mut Velocity,
+    )>,
+    query_move_data: Query<&ReplicatedMoveData>,
+    mut entity_shot_event: EventWriter<EntityShotEvent>,
+    mut sound_event: EventWriter<SoundEvent>,
+) {
+    //fps_controller::fps_controller_move(&time, &physics_context, &mut query);
+    fps_controller::fps_controller_shoot(&time, &physics_context, &mut query, &query_move_data, &mut entity_shot_event, &mut sound_event);
+}
+
+fn on_entity_shot(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut entity_shot_event: EventReader<EntityShotEvent>,
+) {
+    for event in entity_shot_event.read() {
+        let entity = event.entity;
+        let hit_point = event.hit_point;
+        println!("Hit entity {:?} at {:?}", entity, hit_point);
+        commands.spawn((
+            BulletImpact {
+                stopwatch: Stopwatch::new(),
+            },
+            Transform::from_translation(hit_point),
+            Mesh3d(meshes.add(Sphere::new(0.1))),
+            MeshMaterial3d(materials.add(StandardMaterial {
+                base_color: Color::srgb(1.0, 0.0, 0.0),
+                ..Default::default()
+            })),
+        ));
+    }
+}
+
+fn on_sound_from_server(
+    mut commands: Commands,
+    mut sound_event: EventReader<SoundEvent>,
+    asset_server: Res<AssetServer>,
+    mut query: Query<&ReplicatedSoundEffect, Added<ReplicatedSoundEffect>>,
+) {
+    for event in query.iter() {
+        let emitter = event.emitter;
+        let asset = event.asset.clone();
+        let position = event.position;
+        let volume = event.volume;
+        let speed = event.speed;
+        let spatial = event.spatial;
+        let spatial_scale = event.spatial_scale;
+
+        play_sound_effect(&mut commands, &asset_server, asset, position, volume, speed, spatial, spatial_scale);
+    }
+}
+
+fn on_sound_event(
+    mut commands: Commands,
+    mut sound_event: EventReader<SoundEvent>,
+    asset_server: Res<AssetServer>,
+) {
+    for event in sound_event.read() {
+        let emitter = event.emitter;
+        let asset = event.asset.clone();
+        let position = event.position;
+        let volume = event.volume;
+        let speed = event.speed;
+        let spatial = event.spatial;
+        let spatial_scale = event.spatial_scale;
+
+        // TODO: only sounds from server for now
+        //play_sound_effect(&mut commands, &asset_server, asset, position, volume, speed, spatial);
+    }
+}
+
+fn play_sound_effect(commands: &mut Commands, asset_server: &Res<AssetServer>, asset: String, position: Vec3, volume: f32, speed: f32, spatial: bool, spatial_scale: Option<f32>) {
+    let settings = PlaybackSettings::DESPAWN
+      .with_spatial(spatial)
+      .with_speed(speed)
+      .with_volume(Volume::new(volume));
+    if let Some(scale) = spatial_scale {
+        settings.with_spatial_scale(SpatialScale::new(scale));
+    }
+    commands.spawn((
+        Transform::from_translation(position),
+        AudioPlayer::new(
+            asset_server.load(asset),
+        ),
+        settings,
+    ));
 }

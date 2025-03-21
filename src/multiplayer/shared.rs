@@ -23,7 +23,7 @@ pub fn shared_config(mode: Mode) -> SharedConfig {
     }
 }
 
-pub(crate) fn shared_movement_behaviour(
+pub(crate) fn shared_input_behaviour(
     entity_to_update: &Entity,
     input: &Inputs,
     query: &mut Query<&mut FpsControllerInput>,
@@ -36,6 +36,7 @@ pub(crate) fn shared_movement_behaviour(
                 fps_controller_input.sprint = input_data.sprint;
                 fps_controller_input.crouch = input_data.crouch;
                 fps_controller_input.fly = input_data.fly;
+                fps_controller_input.shoot = input_data.shoot;
 
                 fps_controller_input.yaw = input_data.yaw;
                 fps_controller_input.pitch = input_data.pitch;

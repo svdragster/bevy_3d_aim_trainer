@@ -243,6 +243,9 @@ fn move_listener(
     mut player_query: Query<(Entity, &Transform, &mut LastPosition), With<LogicalPlayer>>,
     mut gun_animation_state: Query<&mut GunAnimationState>,
 ) {
+    if player_query.is_empty() {
+        return;
+    }
     let (_, transform, mut last_position) = player_query.get_single_mut().unwrap();
     let current_position = transform.translation;
     let delta = current_position - last_position.last_position;
