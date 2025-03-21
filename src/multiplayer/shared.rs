@@ -1,13 +1,8 @@
-use crate::fps_controller::fps_controller;
-use crate::fps_controller::fps_controller::{FpsController, FpsControllerInput};
-use crate::multiplayer::protocol::{Inputs, PlayerColor, PlayerId, ReplicatedTransform};
+use crate::fps_controller::fps_controller::FpsControllerInput;
+use crate::multiplayer::protocol::Inputs;
 use bevy::prelude::*;
-use bevy_rapier3d::dynamics::Velocity;
-use bevy_rapier3d::geometry::Collider;
-use bevy_rapier3d::plugin::ReadRapierContext;
 use lightyear::prelude::*;
 use std::time::Duration;
-use crate::multiplayer::client::ClientData;
 
 pub const KEY: [u8; 32] = [
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
