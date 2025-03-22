@@ -1,6 +1,6 @@
 use std::f32::consts::*;
 
-use crate::SPAWN_POINT;
+use crate::{fps_gun_plugin, SPAWN_POINT};
 use bevy::render::camera::Exposure;
 use bevy::time::Stopwatch;
 use bevy::{input::mouse::MouseMotion, math::Vec3Swizzles, prelude::*};
@@ -662,7 +662,7 @@ pub fn fps_controller_shoot(
                 }
 
                 // Spray while walking
-                if replicated_move_data.velocity.length_squared() > 0.01 * 0.01 {
+                if replicated_move_data.velocity.length_squared() > 0.1 * 0.1 {
                     spray += RANDOM_SPRAY_DIRECTIONS[controller.spray_count % RANDOM_SPRAY_DIRECTIONS.len()];
                 }
 
@@ -677,7 +677,7 @@ pub fn fps_controller_shoot(
                     position: ray_pos.clone(),
                     volume: 0.3,
                     speed: 1.1 + rng.sample(pitch_range),
-                    spatial: false,
+                    spatial: true,
                     spatial_scale: None,
                 });
 
@@ -702,10 +702,10 @@ pub fn fps_controller_shoot(
                     sound_event.send(SoundEvent {
                         emitter: Some(entity),
                         asset: "sounds/weapons-shield-metal-impact-ring-02.ogg".to_string(),
-                        position: ray_pos.clone(),
+                        position: hit_point.clone(),
                         volume: 0.35,
                         speed: 1.0 + rng.sample(pitch_range),
-                        spatial: false,
+                        spatial: true,
                         spatial_scale: Some(0.2),
                     });
                 }

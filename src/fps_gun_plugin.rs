@@ -12,7 +12,7 @@ pub struct FpsGunPlugin;
 impl Plugin for FpsGunPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, (setup.after(FpsControllerSetup),));
-        app.add_systems(Update, (move_listener, on_fps_gun_animation));
+        app.add_systems(Update, (on_fps_gun_animation));
     }
 }
 
@@ -239,7 +239,7 @@ fn on_gun_scene_loaded(
     }
 }
 
-fn move_listener(
+/*fn move_listener(
     mut player_query: Query<(Entity, &Transform, &mut LastPosition), With<LogicalPlayer>>,
     mut gun_animation_state: Query<&mut GunAnimationState>,
 ) {
@@ -257,7 +257,7 @@ fn move_listener(
             gun_animation_state.walking = false;
         }
     }
-}
+}*/
 
 fn on_fps_gun_animation(
     mut animation_query: Query<(

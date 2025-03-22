@@ -58,6 +58,7 @@ impl Plugin for ProtocolPlugin {
     fn build(&self, app: &mut App) {
         // Events
         app.add_event::<SoundEvent>();
+        app.add_systems(PreUpdate, remove_sound_effects);
 
         // Messages
         //app.add_message::<ChatMessage>(ChannelDirection::Bidirectional);
@@ -118,4 +119,13 @@ pub enum Inputs {
     Spawn,
     /// NOTE: we NEED to provide a None input so that the server can distinguish between lost input packets and 'None' inputs
     None,
+}
+
+fn remove_sound_effects(
+    mut commands: Commands,
+    mut query: Query<Entity, With<ReplicatedSoundEffect>>,
+) {
+    for (entity) in query.iter_mut() {
+        commands.entity(entity).despawn();
+    }
 }

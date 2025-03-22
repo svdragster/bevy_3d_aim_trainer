@@ -240,7 +240,6 @@ fn on_entity_shot(
     for event in entity_shot_event.read() {
         let entity = event.entity;
         let hit_point = event.hit_point;
-        println!("Hit entity {:?} at {:?}", entity, hit_point);
         commands.spawn((
             BulletImpact {
                 stopwatch: Stopwatch::new(),

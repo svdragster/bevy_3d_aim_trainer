@@ -17,7 +17,7 @@ use bevy::time::Stopwatch;
 use bevy_rapier3d::dynamics::Velocity;
 use bevy_rapier3d::geometry::Collider;
 use bevy_rapier3d::plugin::ReadRapierContext;
-use crate::BulletImpact;
+use crate::{fps_gun_plugin, BulletImpact};
 use crate::fps_controller::fps_controller;
 use crate::fps_controller::fps_controller::{EntityShotEvent, FpsController, FpsControllerInput, ANGLE_EPSILON};
 
@@ -82,6 +82,7 @@ impl Plugin for FpsClientPlugin {
         app.add_systems(Update, (on_entity_shot).run_if(on_event::<EntityShotEvent>));
         app.add_systems(Update, (on_sound_event).run_if(on_event::<SoundEvent>));
         app.add_systems(Update, (on_sound_from_server));
+        app.add_systems(Update, (update_fps_animations));
         app.insert_resource(ClientData { client_id, client_entity: None });
     }
 }
@@ -285,7 +286,6 @@ fn on_entity_shot(
     for event in entity_shot_event.read() {
         let entity = event.entity;
         let hit_point = event.hit_point;
-        println!("Hit entity {:?} at {:?}", entity, hit_point);
         commands.spawn((
             BulletImpact {
                 stopwatch: Stopwatch::new(),
@@ -353,4 +353,37 @@ fn play_sound_effect(commands: &mut Commands, asset_server: &Res<AssetServer>, a
         ),
         settings,
     ));
+}
+
+fn update_fps_animations(
+    mut gun_animation_state: Query<&mut fps_gun_plugin::GunAnimationState>,
+    mut query: Query<(
+        Entity,
+        &FpsController,
+        &FpsControllerInput,
+        &ReplicatedMoveData,
+    )>,
+    client_data: Res<ClientData>,
+) {
+    if gun_animation_state.is_empty() {
+        return;
+    }
+    let mut gun_animation_state = gun_animation_state.single_mut();
+    for (entity, controller, input, move_data) in query.iter() {
+        if client_data.client_entity == Some(entity) {
+            if move_data.velocity.y.abs() <= 0.01 {
+                if move_data.velocity.length_squared() > 0.01 {
+                    gun_animation_state.walking = true;
+                } else {
+                    gun_animation_state.walking = false;
+                }
+            }
+            if input.shoot {
+                gun_animation_state.shooting = true;
+            } else {
+                gun_animation_state.shooting = false;
+            }
+        }
+    }
+
 }
