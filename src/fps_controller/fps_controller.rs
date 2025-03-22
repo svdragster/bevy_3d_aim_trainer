@@ -254,9 +254,10 @@ fn build_logical_entity_bundle() -> (
     FpsControllerInput,
     FpsController,
 ) {
-    let height = 3.0;
+    let upright_height = 3.0;
+    let eye_height = 2.0;
     (
-        Collider::cylinder(height / 2.0, 0.5),
+        Collider::cylinder(upright_height / 2.0, 0.5),
         // A capsule can be used but is NOT recommended
         // If you use it, you have to make sure each segment point is
         // equidistant from the translation of the player transform
@@ -286,6 +287,8 @@ fn build_logical_entity_bundle() -> (
         },
         FpsController {
             air_acceleration: 80.0,
+            eye_height_offset: eye_height,
+            upright_height,
             ..default()
         },
     )
