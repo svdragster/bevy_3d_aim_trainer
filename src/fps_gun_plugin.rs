@@ -1,11 +1,10 @@
-use crate::FpsControllerSetup;
+use crate::{FpsControllerSetup, Global};
 use bevy::pbr::NotShadowCaster;
 use bevy::prelude::*;
 use bevy::render::view::RenderLayers;
 use bevy::scene::SceneInstanceReady;
 use std::f32::consts::PI;
 use std::time::Duration;
-use crate::fps_controller::fps_controller::LogicalPlayer;
 
 pub struct FpsGunPlugin;
 
@@ -88,7 +87,11 @@ fn setup(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     mut graphs: ResMut<Assets<AnimationGraph>>,
+    global: Res<Global>,
 ) {
+    if global.is_server {
+        return;
+    }
     commands.spawn((
         ViewModelRenderPlayer,
         Camera3d::default(),
@@ -110,7 +113,7 @@ fn setup(
         &mut commands,
         &asset_server,
         &mut graphs,
-        "ak47_animated.glb",
+        "models/weapons/ak47_animated.glb",
     );
 
     commands.spawn((

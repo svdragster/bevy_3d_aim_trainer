@@ -3,6 +3,7 @@ mod fps_gun_plugin;
 mod multiplayer;
 mod game_states;
 mod game_modes;
+mod animations;
 
 use bevy::audio::{SpatialScale, Volume};
 use bevy::prelude::*;
@@ -17,6 +18,7 @@ use rand::prelude::*;
 use std::f32::consts::TAU;
 use std::net::IpAddr;
 use crate::fps_gun_plugin::FpsGunPlugin;
+use crate::game_states::game_states::{GameState, GameStatesPlugin};
 
 const SPAWN_POINT: Vec3 = Vec3::new(0.0, 1.625, 0.0);
 
@@ -46,14 +48,14 @@ struct BulletImpact {
     stopwatch: Stopwatch,
 }
 
-#[derive(Parser, Debug)]
+#[derive(Parser, Debug, Clone)]
 #[command(version, about)]
 pub struct Cli {
     #[command(subcommand)]
     pub mode: Mode,
 }
 
-#[derive(Subcommand, Debug)]
+#[derive(Subcommand, Debug, Clone)]
 pub enum Mode {
     Client {
         #[arg(long)]
@@ -64,6 +66,12 @@ pub enum Mode {
     Server,
 }
 
+#[derive(Resource)]
+pub struct Global {
+    pub mouse_captured: bool,
+    pub is_server: bool,
+}
+
 fn main() {
     let cli = Cli::parse();
     let mut app = App::new();
@@ -72,12 +80,14 @@ fn main() {
         brightness: 6000.0,
     })
     .insert_resource(ClearColor(Color::srgb(0.83, 0.96, 0.96)))
-    .insert_resource(Points::default()) // Add this line
+    .insert_resource(Points::default())
+    .insert_resource(Global {
+        mouse_captured: false,
+        is_server: matches!(cli.mode, Mode::Server),
+    })
     .add_plugins(DefaultPlugins)
     .add_plugins(RapierPhysicsPlugin::<NoUserData>::default())
     //.add_plugins(RapierDebugRenderPlugin::default())
-    .add_plugins(FpsControllerPlugin)
-    .add_plugins(FpsGunPlugin)
     .add_systems(
         Startup,
         (setup,),
@@ -93,7 +103,7 @@ fn main() {
     );
 
     // Multiplayer
-    match cli.mode {
+    match cli.mode.clone() {
         Mode::Client { port, ip } => {
             let server_ip = ip.parse::<IpAddr>();
             if let Ok(server_ip) = server_ip {
@@ -106,84 +116,19 @@ fn main() {
             app.add_plugins(multiplayer::server::FpsServerPlugin);
         }
     }
-    app.add_plugins(multiplayer::protocol::ProtocolPlugin);
+    app.add_plugins(multiplayer::protocol::ProtocolPlugin {
+        is_server: matches!(cli.mode, Mode::Server),
+    });
+    app.add_plugins(GameStatesPlugin);
 
     // Run the app
     app.run();
 }
 
-fn fps_controller_setup(mut commands: Commands) {
-    let height = 3.0;
-    let listener = SpatialListener::new(0.5);
-    let logical_entity = commands
-        .spawn((
-            Collider::cylinder(height / 2.0, 0.5),
-            // A capsule can be used but is NOT recommended
-            // If you use it, you have to make sure each segment point is
-            // equidistant from the translation of the player transform
-            // Collider::capsule_y(height / 2.0, 0.5),
-            Friction {
-                coefficient: 0.0,
-                combine_rule: CoefficientCombineRule::Min,
-            },
-            Restitution {
-                coefficient: 0.0,
-                combine_rule: CoefficientCombineRule::Min,
-            },
-            ActiveEvents::COLLISION_EVENTS,
-            Velocity::zero(),
-            RigidBody::Dynamic,
-            Sleeping::disabled(),
-            LockedAxes::ROTATION_LOCKED,
-            AdditionalMassProperties::Mass(1.0),
-            GravityScale(0.0),
-            Ccd { enabled: true }, // Prevent clipping when going fast
-            Transform::from_translation(SPAWN_POINT),
-            LogicalPlayer,
-            FpsControllerInput {
-                pitch: -TAU / 12.0,
-                yaw: TAU * 5.0 / 8.0,
-                ..default()
-            },
-            FpsController {
-                air_acceleration: 80.0,
-                ..default()
-            },
-        ))
-        .insert(CameraConfig {
-            height_offset: -0.5,
-        })
-        .insert(fps_gun_plugin::LastPosition {
-            last_position: Vec3::ZERO,
-        })
-        .insert(ShootTracker {
-            stopwatch: Stopwatch::new(),
-            spray_count: 0,
-        })
-        .insert(listener)
-        .id();
-
-    commands.spawn((
-        Camera3d::default(),
-        Camera {
-            order: 0,
-            ..default()
-        },
-        Projection::Perspective(PerspectiveProjection {
-            fov: TAU / 5.0,
-            ..default()
-        }),
-        Exposure::SUNLIGHT,
-        RenderPlayer { logical_entity },
-    ));
-}
 
 fn setup(
     mut commands: Commands,
     mut window: Query<&mut Window>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-    mut materials2d: ResMut<Assets<ColorMaterial>>,
 ) {
     let mut window = window.single_mut();
 
@@ -197,76 +142,8 @@ fn setup(
         }
     }
 
-    commands.spawn((
-        DirectionalLight {
-            illuminance: light_consts::lux::FULL_DAYLIGHT,
-            shadows_enabled: true,
-            ..default()
-        },
-        Transform::from_xyz(4.0, 14.0, 5.0).looking_at(Vec3::ZERO, Vec3::Y),
-    ));
+    commands.set_state(GameState::InGame {paused: false});
 
-    commands.spawn((
-        Camera2d,
-        Camera {
-            order: 2,
-            ..default()
-        },
-    ));
-
-    // Ground collider
-    commands.spawn((
-        Collider::cuboid(20.0, 0.1, 20.0),
-        RigidBody::Fixed,
-        Transform::from_translation(Vec3::new(0.0, -0.5, 0.0)),
-    ));
-    // Ground mesh
-    let ground_material = materials.add(StandardMaterial {
-        base_color: Color::srgb(0.5, 0.5, 0.5),
-        ..Default::default()
-    });
-    commands.spawn((
-        Mesh3d(meshes.add(Cuboid::new(40.0, 0.1, 40.0))),
-        MeshMaterial3d(ground_material.clone()),
-        Transform::from_translation(Vec3::new(0.0, -0.5, 0.0)),
-    ));
-
-    // Wall
-    commands.spawn((
-        Collider::cuboid(5.0, 2.5, 0.5),
-        RigidBody::Fixed,
-        Transform::from_translation(Vec3::new(0.0, 0.0, 10.0)),
-    ));
-    commands.spawn((
-        Mesh3d(meshes.add(Cuboid::new(10.0, 5.0, 1.0))),
-        MeshMaterial3d(ground_material.clone()),
-        Transform::from_translation(Vec3::new(0.0, 0.0, 10.0)),
-    ));
-
-    //spawn_random_target(&mut commands, &mut meshes, &mut materials);
-    //spawn_random_target(&mut commands, &mut meshes, &mut materials);
-    //spawn_random_target(&mut commands, &mut meshes, &mut materials);
-
-    // Crosshair
-    let color = Color::srgb(0.5, 0.7, 1.0);
-    commands.spawn((
-        Mesh2d(meshes.add(Circle::new(2.0))),
-        MeshMaterial2d(materials2d.add(color)),
-        Transform::from_xyz(0.0, 0.0, 0.0),
-    ));
-
-    /*commands.spawn((
-        // Here we are able to call the `From` method instead of creating a new `TextSection`.
-        // This will use the default font (a minimal subset of FiraMono) and apply the default styling.
-        Text::new("From an &str into a Text with the default font!"),
-        Node {
-            position_type: PositionType::Absolute,
-            bottom: Val::Px(5.0),
-            left: Val::Px(15.0),
-            ..default()
-        },
-        PointsDisplay,
-    ));*/
 }
 
 fn respawn(mut query: Query<(&mut Transform, &mut Velocity)>) {
@@ -284,22 +161,18 @@ fn manage_cursor(
     btn: Res<ButtonInput<MouseButton>>,
     key: Res<ButtonInput<KeyCode>>,
     mut window_query: Query<&mut Window>,
-    mut controller_query: Query<&mut FpsController>,
+    mut global: ResMut<Global>,
 ) {
     for mut window in &mut window_query {
         if btn.just_pressed(MouseButton::Left) {
             window.cursor_options.grab_mode = CursorGrabMode::Locked;
             window.cursor_options.visible = false;
-            for mut controller in &mut controller_query {
-                controller.enable_input = true;
-            }
+            global.mouse_captured = true;
         }
         if key.just_pressed(KeyCode::Escape) {
             window.cursor_options.grab_mode = CursorGrabMode::None;
             window.cursor_options.visible = true;
-            for mut controller in &mut controller_query {
-                controller.enable_input = false;
-            }
+            global.mouse_captured = false;
         }
     }
 }

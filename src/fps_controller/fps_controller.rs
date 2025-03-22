@@ -1,14 +1,13 @@
 use std::f32::consts::*;
 
-use crate::{fps_gun_plugin, SPAWN_POINT};
+use crate::multiplayer::protocol::{ReplicatedMoveData, SoundEvent};
+use crate::{Global, SPAWN_POINT};
 use bevy::render::camera::Exposure;
 use bevy::time::Stopwatch;
 use bevy::{input::mouse::MouseMotion, math::Vec3Swizzles, prelude::*};
-use bevy::audio::SpatialScale;
 use bevy_rapier3d::prelude::*;
 use rand::distr::Uniform;
 use rand::Rng;
-use crate::multiplayer::protocol::{ReplicatedMoveData, SoundEvent};
 
 /// Manages the FPS controllers. Executes in `PreUpdate`, after bevy's internal
 /// input processing is finished.
@@ -152,7 +151,7 @@ impl Default for FpsController {
         Self {
             move_mode: MoveMode::Ground,
             radius: 0.5,
-            eye_height_offset: 1.5,
+            eye_height_offset: 1.75,
             fly_speed: 10.0,
             fast_fly_speed: 30.0,
             gravity: 23.0,
@@ -323,7 +322,11 @@ pub fn fps_controller_look(
     mut mouse_events: EventReader<MouseMotion>,
     mut look_query: Query<&mut FpsControllerLook>,
     mut query: Query<(&mut FpsControllerInput, &FpsController)>,
+    global: Res<Global>,
 ) {
+    if !global.mouse_captured {
+        return;
+    }
     if look_query.is_empty() {
         return;
     }

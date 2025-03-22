@@ -17,7 +17,8 @@ use bevy::time::Stopwatch;
 use bevy_rapier3d::dynamics::Velocity;
 use bevy_rapier3d::geometry::Collider;
 use bevy_rapier3d::plugin::ReadRapierContext;
-use crate::{fps_gun_plugin, BulletImpact};
+use crate::{fps_gun_plugin, BulletImpact, Global};
+use crate::animations::animated_entity_plugin::{Animations, LoadedAnimations};
 use crate::fps_controller::fps_controller;
 use crate::fps_controller::fps_controller::{EntityShotEvent, FpsController, FpsControllerInput, ANGLE_EPSILON};
 
@@ -110,9 +111,13 @@ pub(crate) fn buffer_input(
     mut mouse_events: EventReader<MouseMotion>,
     buttons: Res<ButtonInput<MouseButton>>,
     query_fps_controller_input: Query<&FpsControllerInput>,
+    mut global: ResMut<Global>,
 ) {
     let tick = tick_manager.tick();
     if query_fps_controller_input.is_empty() {
+        return;
+    }
+    if !global.mouse_captured {
         return;
     }
     let fps_controller_input = query_fps_controller_input.single();
@@ -177,6 +182,8 @@ pub(crate) fn receive_entity_spawn(
     mut reader: EventReader<EntitySpawnEvent>,
     query: Query<&PlayerId>,
     mut client_data: ResMut<ClientData>,
+    asset_server: Res<AssetServer>,
+    loaded_animations: Res<LoadedAnimations>,
 ) {
     for event in reader.read() {
         let entity = event.entity();
@@ -190,9 +197,16 @@ pub(crate) fn receive_entity_spawn(
                 client_data.client_entity = Some(entity);
             } else {
                 info!("This is not my entity!");
+                crate::game_states::ingame::ingame::spawn_soldier(
+                    &mut commands,
+                    &asset_server,
+                    "models/players/soldier_animated.glb".to_string(),
+                    format!("Soldier {}", player_id.0.to_bits()),
+                    Vec3::splat(0.0),
+                    &loaded_animations,
+                    entity,
+                );
             }
-        } else {
-            info!("Entity does not have a PlayerId component");
         }
     }
 }

@@ -1,1 +1,1 @@
-mod game_modes;
+pub mod game_modes;

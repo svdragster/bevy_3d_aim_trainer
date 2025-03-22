@@ -1,4 +1,3 @@
-use bevy::audio::SpatialScale;
 use bevy::prelude::*;
 use lightyear::prelude::client::ComponentSyncMode;
 use lightyear::prelude::*;
@@ -52,13 +51,17 @@ pub struct ChatMessage(pub String);
 #[derive(Channel)]
 pub struct ChatChannel;
 
-pub struct ProtocolPlugin;
+pub struct ProtocolPlugin {
+    pub is_server: bool,
+}
 
 impl Plugin for ProtocolPlugin {
     fn build(&self, app: &mut App) {
         // Events
         app.add_event::<SoundEvent>();
-        app.add_systems(PreUpdate, remove_sound_effects);
+        if self.is_server {
+            app.add_systems(PreUpdate, remove_sound_effects);
+        }
 
         // Messages
         //app.add_message::<ChatMessage>(ChannelDirection::Bidirectional);
