@@ -54,10 +54,7 @@ impl SoldierAnimations {
 }
 
 fn load_animations(
-    mut commands: Commands,
     asset_server: Res<AssetServer>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
     graphs: ResMut<Assets<AnimationGraph>>,
     mut animations_resource: ResMut<LoadedAnimations>,
 ) {

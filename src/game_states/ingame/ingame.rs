@@ -1,14 +1,15 @@
-use std::f32::consts::PI;
 use crate::animations::animated_entity_plugin::*;
+use crate::animations::{animated_entity_plugin, look_plugin};
 use crate::fps_controller::fps_controller::*;
 use crate::fps_gun_plugin::FpsGunPlugin;
 use crate::game_states::game_states::InGameState;
+use crate::multiplayer::protocol::ReplicatedMoveData;
 use bevy::prelude::*;
 use bevy::render::view::NoFrustumCulling;
 use bevy_rapier3d::dynamics::RigidBody;
 use bevy_rapier3d::geometry::Collider;
-use crate::animations::{animated_entity_plugin, look_plugin};
-use crate::multiplayer::protocol::ReplicatedMoveData;
+use std::f32::consts::PI;
+use crate::animations::look_plugin::{LookPlugin, VerticalLook, VerticalLookAnchor};
 
 pub struct IngamePlugin;
 
@@ -21,7 +22,8 @@ impl Plugin for IngamePlugin {
         app.add_systems(Update, (update_soldier_translation));
         app.add_plugins(FpsControllerPlugin)
           .add_plugins(FpsGunPlugin)
-          .add_plugins(AnimatedEntityPlugin);
+          .add_plugins(AnimatedEntityPlugin)
+          .add_plugins(LookPlugin);
     }
 }
 
@@ -162,15 +164,21 @@ pub fn spawn_soldier(
 }
 
 fn update_soldier_translation(
-    mut soldier_query: Query<(&mut Transform, &MySoldier), With<MySoldier>>,
+    mut soldier_query: Query<(&mut Transform, &MySoldier, &mut VerticalLook), With<MySoldier>>,
     transform_query: Query<&ReplicatedMoveData, Without<MySoldier>>,
+    mut vertical_look_anchor_query: Query<&mut VerticalLookAnchor>,
 ) {
-    for (mut soldier_transform, soldier) in soldier_query.iter_mut() {
+    for (mut soldier_transform, soldier, mut vertical_look) in soldier_query.iter_mut() {
         let parent_transform = transform_query.get(soldier.parent);
         if let Ok(parent_transform) = parent_transform {
             soldier_transform.translation = parent_transform.translation.clone();
             soldier_transform.translation.y -= 1.6;
             soldier_transform.rotation = Quat::from_euler(EulerRot::YXZ, parent_transform.yaw + PI, 0.0, 0.0);
+            if let Some(anchor_entity) = vertical_look.anchor {
+                if let Ok(mut vertical_look_anchor) = vertical_look_anchor_query.get_mut(anchor_entity) {
+                    vertical_look_anchor.vertical_rotation = Quat::from_euler(EulerRot::YXZ, 0.0, -parent_transform.pitch, 0.0).x;
+                }
+            }
         }
     }
 }

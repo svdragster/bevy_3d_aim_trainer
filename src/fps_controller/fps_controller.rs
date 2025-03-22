@@ -57,6 +57,8 @@ impl Plugin for FpsControllerPlugin {
     }
 }
 
+pub const EYE_HEIGHT_OFFSET: f32 = 2.0;
+
 #[derive(PartialEq)]
 pub enum MoveMode {
     Noclip,
@@ -151,7 +153,7 @@ impl Default for FpsController {
         Self {
             move_mode: MoveMode::Ground,
             radius: 0.5,
-            eye_height_offset: 1.75,
+            eye_height_offset: EYE_HEIGHT_OFFSET,
             fly_speed: 10.0,
             fast_fly_speed: 30.0,
             gravity: 23.0,

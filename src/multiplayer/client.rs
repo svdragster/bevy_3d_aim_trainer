@@ -1,8 +1,6 @@
 use std::f32::consts::{FRAC_PI_2, PI, TAU};
 use crate::multiplayer::protocol::{InputData, Inputs, PlayerColor, PlayerId, ReplicatedMoveData, ReplicatedSoundEffect, SoundEvent};
-use crate::multiplayer::shared::{
-    shared_config, shared_input_behaviour, KEY, PROTOCOL_ID,
-};
+use crate::multiplayer::shared::{shared_config, shared_input_behaviour, KEY, PROTOCOL_ID};
 use bevy::prelude::*;
 use lightyear::client::input::native::InputSystemSet;
 use lightyear::prelude::client::*;
@@ -20,7 +18,7 @@ use bevy_rapier3d::plugin::ReadRapierContext;
 use crate::{fps_gun_plugin, BulletImpact, Global};
 use crate::animations::animated_entity_plugin::{Animations, LoadedAnimations};
 use crate::fps_controller::fps_controller;
-use crate::fps_controller::fps_controller::{EntityShotEvent, FpsController, FpsControllerInput, ANGLE_EPSILON};
+use crate::fps_controller::fps_controller::{EntityShotEvent, FpsController, FpsControllerInput, ANGLE_EPSILON, EYE_HEIGHT_OFFSET};
 
 pub struct FpsClientPlugin {
     pub server_port: u16,
@@ -257,7 +255,7 @@ fn draw_gizmos(
         }
         gizmos.sphere(
             Isometry3d::new(
-                position.translation + Vec3::new(0.0, 1.5, 0.0),
+                position.translation + Vec3::new(0.0, EYE_HEIGHT_OFFSET, 0.0),
                 Quat::default(),
             ),
             0.5,
@@ -265,8 +263,8 @@ fn draw_gizmos(
         );
         let rotation = Quat::from_euler(EulerRot::YXZ, position.yaw, position.pitch, 0.0);
         gizmos.arrow(
-            position.translation + Vec3::new(0.0, 1.5, 0.0),
-            position.translation + Vec3::new(0.0, 1.5, 0.0) + rotation * Vec3::NEG_Z,
+            position.translation + Vec3::new(0.0, EYE_HEIGHT_OFFSET, 0.0),
+            position.translation + Vec3::new(0.0, EYE_HEIGHT_OFFSET, 0.0) + rotation * Vec3::NEG_Z,
             color.0,
         );
     }
