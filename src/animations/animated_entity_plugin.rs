@@ -23,7 +23,7 @@ pub struct LoadedAnimations {
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
-enum SoldierAnimations {
+pub enum SoldierAnimations {
     Idle = 0,
     Walking = 1,
     WalkingBack = 2,
@@ -76,7 +76,9 @@ fn load_animations(
 ///////////////////////////////
 
 #[derive(Component)]
-pub struct AnimatedEntity;
+pub struct AnimatedEntity {
+    pub animation_player_entity: Entity,
+}
 
 #[derive(Component, Clone)]
 pub struct Animations {
@@ -136,9 +138,10 @@ pub fn initialize_animation(
     mut commands: Commands,
     mut players: Query<&mut AnimationPlayer>,
 ) {
-    let entity = children.get(trigger.entity()).unwrap()[0];
+    let trigger_entity = trigger.entity();
+    let entity = children.get(trigger_entity).unwrap()[0];
     let player_entity = children.get(entity).unwrap()[0];
-    let animations = animations.get(trigger.entity()).unwrap();
+    let animations = animations.get(trigger_entity).unwrap();
 
     let mut player = players.get_mut(player_entity).unwrap();
     let mut transitions = AnimationTransitions::new();
@@ -153,4 +156,8 @@ pub fn initialize_animation(
     commands
         .entity(player_entity)
         .insert((AnimationGraphHandle(animations.graph.clone()), transitions));
+
+    commands.entity(trigger_entity).insert(AnimatedEntity {
+        animation_player_entity: player_entity,
+    });
 }

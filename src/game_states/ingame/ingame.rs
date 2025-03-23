@@ -3,12 +3,14 @@ use crate::animations::{animated_entity_plugin, look_plugin};
 use crate::fps_controller::fps_controller::*;
 use crate::fps_gun_plugin::FpsGunPlugin;
 use crate::game_states::game_states::InGameState;
-use crate::multiplayer::protocol::ReplicatedMoveData;
+use crate::multiplayer::protocol::{ReplicatedAnimationData, ReplicatedMoveData};
 use bevy::prelude::*;
 use bevy::render::view::NoFrustumCulling;
 use bevy_rapier3d::dynamics::RigidBody;
 use bevy_rapier3d::geometry::Collider;
 use std::f32::consts::PI;
+use std::time::Duration;
+use clap::command;
 use crate::animations::look_plugin::{LookPlugin, VerticalLook, VerticalLookAnchor};
 
 pub struct IngamePlugin;
@@ -19,7 +21,7 @@ impl Plugin for IngamePlugin {
           OnEnter(InGameState),
           (setup_world,),
         );
-        app.add_systems(Update, (update_soldier_translation));
+        app.add_systems(Update, (update_soldier_translation, update_soldier_animation));
         app.add_plugins(FpsControllerPlugin)
           .add_plugins(FpsGunPlugin)
           .add_plugins(AnimatedEntityPlugin)
@@ -134,7 +136,6 @@ pub fn spawn_soldier(
           .spawn((
               Name::from(name),
               SceneRoot(scene),
-              AnimatedEntity,
               soldier_animations.clone(),
               Transform {
                   translation,
@@ -165,18 +166,54 @@ pub fn spawn_soldier(
 
 fn update_soldier_translation(
     mut soldier_query: Query<(&mut Transform, &MySoldier, &mut VerticalLook), With<MySoldier>>,
-    transform_query: Query<&ReplicatedMoveData, Without<MySoldier>>,
+    move_data_query: Query<&ReplicatedMoveData, Without<MySoldier>>,
     mut vertical_look_anchor_query: Query<&mut VerticalLookAnchor>,
 ) {
     for (mut soldier_transform, soldier, mut vertical_look) in soldier_query.iter_mut() {
-        let parent_transform = transform_query.get(soldier.parent);
-        if let Ok(parent_transform) = parent_transform {
-            soldier_transform.translation = parent_transform.translation.clone();
-            soldier_transform.translation.y -= 1.6;
-            soldier_transform.rotation = Quat::from_euler(EulerRot::YXZ, parent_transform.yaw + PI, 0.0, 0.0);
+        let parent_move_data = move_data_query.get(soldier.parent);
+        if let Ok(parent_move_data) = parent_move_data {
+            soldier_transform.translation = parent_move_data.translation.clone();
+            soldier_transform.translation.y -= 1.6; // TODO: magic number
+            soldier_transform.rotation = Quat::from_euler(EulerRot::YXZ, parent_move_data.yaw + PI, 0.0, 0.0);
             if let Some(anchor_entity) = vertical_look.anchor {
                 if let Ok(mut vertical_look_anchor) = vertical_look_anchor_query.get_mut(anchor_entity) {
-                    vertical_look_anchor.vertical_rotation = Quat::from_euler(EulerRot::YXZ, 0.0, -parent_transform.pitch, 0.0).x;
+                    vertical_look_anchor.vertical_rotation = Quat::from_euler(EulerRot::YXZ, 0.0, -parent_move_data.pitch, 0.0).x;
+                }
+            }
+        }
+    }
+}
+
+fn update_soldier_animation(
+    mut commands: Commands,
+    mut soldier_query: Query<(Entity, &MySoldier, &mut Animations, &AnimatedEntity), With<MySoldier>>,
+    animation_data_query: Query<&ReplicatedAnimationData, Without<MySoldier>>,
+    mut animation_players: Query<(&mut AnimationPlayer, &mut AnimationTransitions)>,
+) {
+    for (soldier_entity, soldier, mut animations, animated_entity) in soldier_query.iter_mut() {
+        let parent_animation_data = animation_data_query.get(soldier.parent);
+        if let Ok(parent_animation_data) = parent_animation_data {
+            if let Ok((mut animation_player, mut transitions)) = animation_players.get_mut(animated_entity.animation_player_entity) {
+                if parent_animation_data.animation_index != animations.current_animation_index {
+                    animations.current_animation_index = parent_animation_data.animation_index;
+                    transitions
+                      .play(
+                          &mut animation_player,
+                          animations.animations[parent_animation_data.animation_index],
+                          Duration::from_millis(400),
+                      )
+                      .repeat();
+
+                    // TODO hacky workaround
+                    let mut speed = 1.0;
+                    if parent_animation_data.animation_index == SoldierAnimations::Walking as usize {
+                        speed = 1.8;
+                    } else if parent_animation_data.animation_index == SoldierAnimations::WalkingBack as usize {
+                        speed = 1.4;
+                    }
+                    for (_, active_animation) in animation_player.playing_animations_mut() {
+                        active_animation.set_speed(speed);
+                    }
                 }
             }
         }

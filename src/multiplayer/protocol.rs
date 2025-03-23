@@ -16,6 +16,12 @@ pub struct ReplicatedMoveData {
     pub pitch: f32,
 }
 
+/// A component that will store the animation data of the player
+#[derive(Component, Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct ReplicatedAnimationData {
+    pub animation_index: usize,
+}
+
 /// A component that will store the color of the entity, so that each player can have a different color.
 #[derive(Component, Deserialize, Serialize, Clone, Debug, PartialEq)]
 pub struct PlayerColor(pub Color);
@@ -88,6 +94,10 @@ impl Plugin for ProtocolPlugin {
         app.register_component::<PlayerColor>(ChannelDirection::ServerToClient)
             .add_prediction(ComponentSyncMode::Once)
             .add_interpolation(ComponentSyncMode::Once);
+
+        app.register_component::<ReplicatedAnimationData>(ChannelDirection::ServerToClient)
+          .add_prediction(ComponentSyncMode::Full)
+          .add_interpolation(ComponentSyncMode::Once);
 
         app.register_component::<ReplicatedSoundEffect>(ChannelDirection::ServerToClient)
           .add_prediction(ComponentSyncMode::Once)

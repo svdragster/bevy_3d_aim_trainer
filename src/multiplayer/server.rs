@@ -1,8 +1,6 @@
 use crate::fps_controller::fps_controller;
 use crate::fps_controller::fps_controller::{EntityShotEvent, FpsController, FpsControllerInput};
-use crate::multiplayer::protocol::{
-    Inputs, PlayerColor, PlayerId, ReplicatedMoveData, ReplicatedSoundEffect, SoundEvent,
-};
+use crate::multiplayer::protocol::{Inputs, PlayerColor, PlayerId, ReplicatedAnimationData, ReplicatedMoveData, ReplicatedSoundEffect, SoundEvent};
 use crate::multiplayer::shared::{shared_config, shared_input_behaviour, KEY, PROTOCOL_ID};
 use crate::BulletImpact;
 use bevy::prelude::*;
@@ -18,6 +16,7 @@ use rand::Rng;
 use std::f32::consts::TAU;
 use std::net::{Ipv4Addr, SocketAddr};
 use std::time::Duration;
+use crate::animations::animated_entity_plugin::SoldierAnimations;
 
 pub struct FpsServerPlugin;
 
@@ -136,6 +135,9 @@ pub(crate) fn handle_connections(
                     yaw: 0.0,
                     pitch: 0.0,
                 },
+                ReplicatedAnimationData {
+                    animation_index: 0,
+                },
                 PlayerColor(color),
                 Replicate {
                     sync: SyncTarget {
@@ -160,16 +162,48 @@ fn on_input(
     // Retrieve the entity associated with a given client
     global: Res<Global>,
     mut query: Query<&mut FpsControllerInput>,
+    mut animations_query: Query<&mut ReplicatedAnimationData>
 ) {
     for input in input_reader.read() {
         let client_id = input.from();
         if let Some(input) = input.input() {
             if let Some(player_entity) = global.client_id_to_entity_id.get(&client_id) {
                 shared_input_behaviour(player_entity, input, &mut query);
+                server_input_behaviour(player_entity, input, &mut animations_query);
             }
         }
     }
 }
+
+fn server_input_behaviour(
+    entity_to_update: &Entity,
+    input: &Inputs,
+    animations_query: &mut Query<&mut ReplicatedAnimationData>,
+) {
+    match input {
+        Inputs::Input(input_data) => {
+            if let Ok(mut replicated_animation_data) = animations_query.get_mut(*entity_to_update) {
+                if input_data.movement.z > 0.0 {
+                    replicated_animation_data.animation_index = SoldierAnimations::Walking as usize;
+                } else if input_data.movement.z < 0.0 {
+                    replicated_animation_data.animation_index = SoldierAnimations::WalkingBack as usize;
+                } else if input_data.movement.x < 0.0 {
+                    replicated_animation_data.animation_index = SoldierAnimations::WalkingLeft as usize;
+                } else if input_data.movement.x > 0.0 {
+                    replicated_animation_data.animation_index = SoldierAnimations::WalkingRight as usize;
+                } else if input_data.jump {
+                    replicated_animation_data.animation_index = SoldierAnimations::Idle as usize;
+                } else {
+                    replicated_animation_data.animation_index = SoldierAnimations::Idle as usize;
+                }
+                println!("{}", replicated_animation_data.animation_index);
+            }
+        }
+        _ => {}
+    }
+}
+
+
 
 fn update_physics(
     time: Res<Time>,
