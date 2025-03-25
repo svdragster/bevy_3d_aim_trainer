@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use crate::{FpsControllerSetup, Global};
 use bevy::pbr::NotShadowCaster;
 use bevy::prelude::*;
@@ -10,9 +11,31 @@ pub struct FpsGunPlugin;
 
 impl Plugin for FpsGunPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, (setup.after(FpsControllerSetup),));
+        app.insert_resource(Weapons {
+            weapons: HashMap::default(),
+        });
+        app.add_systems(Startup, (setup, setup_client.after(FpsControllerSetup)));
         app.add_systems(Update, (on_fps_gun_animation));
     }
+}
+
+#[derive(Resource)]
+pub struct Weapons {
+    pub weapons: HashMap<String, WeaponData>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct WeaponData {
+    pub glb_path: String,
+    pub shoot_sound_path: Option<String>,
+    pub reload_sound_path: Option<String>,
+    pub shoot_cooldown: f32,
+    pub reload_time: f32,
+}
+
+#[derive(Component)]
+pub struct FpsWeapon {
+    pub weapon_key: String,
 }
 
 #[derive(Component, Clone, Debug, Eq, PartialEq, Hash)]
@@ -78,16 +101,22 @@ impl GunAnimations {
     }
 }
 
-#[derive(Component, Clone)]
-pub struct LastPosition {
-    pub last_position: Vec3,
+fn setup(mut weapons: ResMut<Weapons>) {
+    weapons.weapons.insert("ak47".to_string(), WeaponData {
+        glb_path: "models/weapons/ak47_animated.glb".to_string(),
+        shoot_sound_path: Some("sounds/weapons-rifle-assault-rifle-fire-01.ogg".to_string()),
+        reload_sound_path: Some("sounds/ak47_reload.ogg".to_string()),
+        shoot_cooldown: 0.1,
+        reload_time: 2.5,
+    });
 }
 
-fn setup(
+fn setup_client(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     mut graphs: ResMut<Assets<AnimationGraph>>,
     global: Res<Global>,
+    weapons: Res<Weapons>,
 ) {
     if global.is_server {
         return;
@@ -113,7 +142,8 @@ fn setup(
         &mut commands,
         &asset_server,
         &mut graphs,
-        "models/weapons/ak47_animated.glb",
+        &weapons,
+        "ak47",
     );
 
     commands.spawn((
@@ -136,14 +166,22 @@ fn spawn_gun(
     commands: &mut Commands,
     asset_server: &Res<AssetServer>,
     graphs: &mut ResMut<Assets<AnimationGraph>>,
-    asset_path: &str,
+    weapons: &Res<Weapons>,
+    weapon_key: &str,
 ) {
+    let weapon_data = weapons.weapons.get(weapon_key);
+    if weapon_data.is_none() {
+        // TODO: warning?
+        return;
+    }
+    let weapon_data = weapon_data.unwrap();
+
     let (graph, node_indices) = AnimationGraph::from_clips(
         GunAnimations::all_indices()
             .iter()
             .map(|&index| {
                 asset_server
-                    .load(GltfAssetLabel::Animation(index).from_asset(asset_path.to_string()))
+                    .load(GltfAssetLabel::Animation(index).from_asset(weapon_data.clone().glb_path))
             })
             .collect::<Vec<_>>(),
     );
@@ -156,7 +194,7 @@ fn spawn_gun(
         current_animation_index: GunAnimations::Idle as usize,
     };
 
-    let scene = asset_server.load(GltfAssetLabel::Scene(0).from_asset(asset_path.to_string()));
+    let scene = asset_server.load(GltfAssetLabel::Scene(0).from_asset(weapon_key.to_string()));
     commands
         .spawn((
             SceneRoot(scene),
@@ -167,6 +205,9 @@ fn spawn_gun(
             },
             RenderLayers::from_layers(&[VIEW_MODEL_RENDER_LAYER]),
             animations,
+            FpsWeapon {
+                weapon_key: weapon_key.to_string(),
+            }
         ))
         .observe(on_gun_scene_loaded);
 }
@@ -223,44 +264,21 @@ fn on_gun_scene_loaded(
     if let Some(muzzle) = find_entity(&children_query, &name_query, entity_to_animate, "Muzzle") {
         commands
             .entity(muzzle)
-            .insert((
-                FpsGunMuzzle,
-                Visibility::Hidden
-            ));
+            .insert((FpsGunMuzzle, Visibility::Hidden));
     }
 
-    if let Some(left_hand) = find_entity(&children_query, &name_query, entity_to_animate, "LeftHand") {
-        commands
-          .entity(left_hand)
-          .insert(Visibility::Hidden);
+    if let Some(left_hand) =
+        find_entity(&children_query, &name_query, entity_to_animate, "LeftHand")
+    {
+        commands.entity(left_hand).insert(Visibility::Hidden);
     }
 
-    if let Some(right_hand) = find_entity(&children_query, &name_query, entity_to_animate, "RightHand") {
-        commands
-          .entity(right_hand)
-          .insert(Visibility::Hidden);
+    if let Some(right_hand) =
+        find_entity(&children_query, &name_query, entity_to_animate, "RightHand")
+    {
+        commands.entity(right_hand).insert(Visibility::Hidden);
     }
 }
-
-/*fn move_listener(
-    mut player_query: Query<(Entity, &Transform, &mut LastPosition), With<LogicalPlayer>>,
-    mut gun_animation_state: Query<&mut GunAnimationState>,
-) {
-    if player_query.is_empty() {
-        return;
-    }
-    let (_, transform, mut last_position) = player_query.get_single_mut().unwrap();
-    let current_position = transform.translation;
-    let delta = current_position - last_position.last_position;
-    last_position.last_position = current_position;
-    if let Ok(mut gun_animation_state) = gun_animation_state.get_single_mut() {
-        if delta.length_squared() > 0.02 * 0.02 {
-            gun_animation_state.walking = true;
-        } else {
-            gun_animation_state.walking = false;
-        }
-    }
-}*/
 
 fn on_fps_gun_animation(
     mut animation_query: Query<(
@@ -274,25 +292,26 @@ fn on_fps_gun_animation(
     {
         let previous_walking = state.previous_walking;
         let previous_shooting = state.previous_shooting;
+        let previous_reloading = state.previous_reloading;
 
         let mut animations = animations.get_single_mut().unwrap();
-        let mut duration = 0;
+        let mut transition_duration = 0;
         let mut new_animation: Option<GunAnimations> = None;
         if state.shooting {
             if !previous_shooting {
                 new_animation = Some(GunAnimations::Shooting);
-                duration = 100;
+                transition_duration = 100;
             }
         } else if state.walking {
             if !previous_walking
                 || animations.current_animation_index == GunAnimations::Shooting as usize
             {
                 new_animation = Some(GunAnimations::Walking);
-                duration = 200;
+                transition_duration = 200;
             }
         } else if !state.walking && !state.shooting {
             new_animation = Some(GunAnimations::Idle);
-            duration = 200;
+            transition_duration = 200;
         }
         if let Some(new_animation) = new_animation {
             if animations.current_animation_index != new_animation as usize {
@@ -301,7 +320,7 @@ fn on_fps_gun_animation(
                     .play(
                         &mut animation_player,
                         animations.animations[new_animation as usize],
-                        Duration::from_millis(duration),
+                        Duration::from_millis(transition_duration),
                     )
                     .repeat();
                 for (_, active_animation) in animation_player.playing_animations_mut() {
@@ -310,8 +329,10 @@ fn on_fps_gun_animation(
                 animations.current_animation_index = new_animation as usize;
             }
         }
+
         state.previous_walking = state.walking;
         state.previous_shooting = state.shooting;
+        state.previous_reloading = state.reloading;
     }
 }
 
