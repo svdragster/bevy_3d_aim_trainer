@@ -183,7 +183,9 @@ fn server_input_behaviour(
     match input {
         Inputs::Input(input_data) => {
             if let Ok(mut replicated_animation_data) = animations_query.get_mut(*entity_to_update) {
-                if input_data.movement.z > 0.0 {
+                if input_data.jump {
+                    replicated_animation_data.animation_index = SoldierAnimations::Idle as usize;
+                } else if input_data.movement.z > 0.0 {
                     replicated_animation_data.animation_index = SoldierAnimations::Walking as usize;
                 } else if input_data.movement.z < 0.0 {
                     replicated_animation_data.animation_index = SoldierAnimations::WalkingBack as usize;
@@ -191,12 +193,9 @@ fn server_input_behaviour(
                     replicated_animation_data.animation_index = SoldierAnimations::WalkingLeft as usize;
                 } else if input_data.movement.x > 0.0 {
                     replicated_animation_data.animation_index = SoldierAnimations::WalkingRight as usize;
-                } else if input_data.jump {
-                    replicated_animation_data.animation_index = SoldierAnimations::Idle as usize;
                 } else {
                     replicated_animation_data.animation_index = SoldierAnimations::Idle as usize;
                 }
-                println!("{}", replicated_animation_data.animation_index);
             }
         }
         _ => {}
