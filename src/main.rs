@@ -119,7 +119,9 @@ fn main() {
     app.add_plugins(multiplayer::protocol::ProtocolPlugin {
         is_server: matches!(cli.mode, Mode::Server),
     });
-    app.add_plugins(GameStatesPlugin);
+    app.add_plugins(GameStatesPlugin {
+        is_client: matches!(cli.mode, Mode::Client { .. }),
+    });
 
     // Run the app
     app.run();

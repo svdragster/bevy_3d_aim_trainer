@@ -13,7 +13,9 @@ use std::time::Duration;
 use clap::command;
 use crate::animations::look_plugin::{LookPlugin, VerticalLook, VerticalLookAnchor};
 
-pub struct IngamePlugin;
+pub struct IngamePlugin {
+    pub is_client: bool,
+}
 
 impl Plugin for IngamePlugin {
     fn build(&self, app: &mut App) {
@@ -23,7 +25,9 @@ impl Plugin for IngamePlugin {
         );
         app.add_systems(Update, (update_soldier_translation, update_soldier_animation));
         app.add_plugins(FpsControllerPlugin)
-          .add_plugins(FpsGunPlugin)
+          .add_plugins(FpsGunPlugin {
+              is_client: self.is_client,
+          })
           .add_plugins(AnimatedEntityPlugin)
           .add_plugins(LookPlugin);
     }

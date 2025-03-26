@@ -43,7 +43,9 @@ pub enum GamePhase {
     Conclusion,
 }
 
-pub struct GameStatesPlugin;
+pub struct GameStatesPlugin {
+    pub is_client: bool,
+}
 
 impl Plugin for GameStatesPlugin {
     fn build(&self, app: &mut App) {
@@ -51,6 +53,8 @@ impl Plugin for GameStatesPlugin {
             .enable_state_scoped_entities::<GameState>()
             .add_computed_state::<InGameState>()
             .add_sub_state::<GamePhase>();
-        app.add_plugins(IngamePlugin);
+        app.add_plugins(IngamePlugin {
+            is_client: self.is_client,
+        });
     }
 }
